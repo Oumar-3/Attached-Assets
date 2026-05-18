@@ -49,108 +49,83 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
-        style={[styles.root, { backgroundColor: "#000" }]}
+        style={[styles.root, { backgroundColor: colors.background }]}
         contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={[styles.top, { paddingTop: topPad + 48 }]}>
-          <LinearGradient
-            colors={[colors.primary + "30", "transparent"]}
-            style={styles.topGlow}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-          />
-          <LinearGradient
-            colors={[colors.primary, colors.primaryDark]}
-            style={styles.logoBox}
-          >
-            <Feather name="shopping-bag" size={28} color="#000" />
-          </LinearGradient>
-          <Text style={styles.appName}>BoutiqueApp</Text>
-          <Text style={styles.tagline}>Gérez votre boutique</Text>
-        </View>
+        <LinearGradient
+          colors={[colors.primary + "25", colors.background]}
+          style={[styles.header, { paddingTop: topPad + 40 }]}
+        >
+          <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
+            <Feather name="shopping-bag" size={32} color="#fff" />
+          </View>
+          <Text style={[styles.appName, { color: colors.text }]}>BoutiqueApp</Text>
+          <Text style={[styles.tagline, { color: colors.mutedForeground }]}>Gérez votre boutique</Text>
+        </LinearGradient>
 
-        <View style={[styles.form, { paddingBottom: bottomPad + 32 }]}>
-          <Text style={styles.welcomeTitle}>Bon retour 👋</Text>
-          <Text style={[styles.welcomeSub, { color: colors.mutedForeground }]}>
-            Connectez-vous pour continuer
-          </Text>
+        <View style={[styles.form, { paddingBottom: bottomPad + 24 }]}>
+          <Text style={[styles.title, { color: colors.text }]}>Connexion</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>Bon retour parmi nous</Text>
 
           {error ? (
-            <View style={[styles.errorBox, { backgroundColor: colors.destructive + "15", borderColor: colors.destructive + "30" }]}>
-              <Feather name="alert-circle" size={14} color={colors.destructive} />
+            <View style={[styles.errorBox, { backgroundColor: colors.destructive + "15" }]}>
+              <Feather name="alert-circle" size={16} color={colors.destructive} />
               <Text style={[styles.errorText, { color: colors.destructive }]}>{error}</Text>
             </View>
           ) : null}
 
           <View style={styles.fields}>
-            <View>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Email</Text>
-              <View style={[styles.inputBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="votre@email.com"
-                  placeholderTextColor="#444"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  returnKeyType="next"
-                />
-              </View>
+            <View style={[styles.inputBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Feather name="mail" size={18} color={colors.mutedForeground} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="Email"
+                placeholderTextColor={colors.mutedForeground}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                returnKeyType="next"
+              />
             </View>
-            <View>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Mot de passe</Text>
-              <View style={[styles.inputBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <TextInput
-                  style={[styles.input, { color: colors.text, flex: 1 }]}
-                  placeholder="••••••••"
-                  placeholderTextColor="#444"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPass}
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-                />
-                <TouchableOpacity onPress={() => setShowPass(s => !s)} style={styles.eyeBtn}>
-                  <Feather name={showPass ? "eye-off" : "eye"} size={18} color="#555" />
-                </TouchableOpacity>
-              </View>
+            <View style={[styles.inputBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Feather name="lock" size={18} color={colors.mutedForeground} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="Mot de passe"
+                placeholderTextColor={colors.mutedForeground}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPass}
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
+              />
+              <TouchableOpacity onPress={() => setShowPass(s => !s)}>
+                <Feather name={showPass ? "eye-off" : "eye"} size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
             </View>
           </View>
 
           <TouchableOpacity
-            style={[styles.btnWrap, loading && { opacity: 0.7 }]}
+            style={[styles.btn, { backgroundColor: colors.primary }, loading && styles.btnDisabled]}
             onPress={handleLogin}
             disabled={loading}
-            activeOpacity={0.9}
+            activeOpacity={0.85}
           >
-            <LinearGradient
-              colors={[colors.primary, colors.primaryDark]}
-              style={styles.btn}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#000" />
-              ) : (
-                <Text style={styles.btnText}>Se connecter</Text>
-              )}
-            </LinearGradient>
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.btnText}>Se connecter</Text>
+            )}
           </TouchableOpacity>
 
-          <View style={[styles.divider, { borderColor: colors.border }]}>
-            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            <Text style={[styles.dividerText, { color: colors.mutedForeground }]}>ou</Text>
-            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-          </View>
-
           <TouchableOpacity
-            style={[styles.secondaryBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+            style={[styles.secondaryBtn, { borderColor: colors.border }]}
             onPress={() => router.push("/(auth)/register")}
             activeOpacity={0.75}
           >
-            <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Créer un compte</Text>
+            <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Créer un compte</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -160,103 +135,67 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  top: {
+  header: {
     alignItems: "center",
     paddingBottom: 40,
     paddingHorizontal: 24,
-    gap: 10,
-    position: "relative",
-  },
-  topGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 300,
+    gap: 12,
   },
   logoBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
+    width: 72,
+    height: 72,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 8,
+    shadowColor: "#00A86B",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  appName: {
-    fontSize: 26,
-    fontWeight: "700",
-    fontFamily: "Inter_700Bold",
-    color: "#fff",
-  },
-  tagline: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    color: "#555",
-  },
-  form: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    gap: 18,
-  },
-  welcomeTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    fontFamily: "Inter_700Bold",
-    color: "#fff",
-  },
-  welcomeSub: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    marginBottom: 4,
-  },
+  appName: { fontSize: 28, fontWeight: "700", fontFamily: "Inter_700Bold" },
+  tagline: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  form: { paddingHorizontal: 24, paddingTop: 32, gap: 16 },
+  title: { fontSize: 24, fontWeight: "700", fontFamily: "Inter_700Bold" },
+  subtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginBottom: 8 },
   errorBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 10,
   },
-  errorText: { fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
-  fields: { gap: 14 },
-  fieldLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    fontWeight: "500",
-    marginBottom: 8,
-    letterSpacing: 0.3,
-  },
+  errorText: { fontSize: 14, fontFamily: "Inter_400Regular", flex: 1 },
+  fields: { gap: 12 },
   inputBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 15,
+    paddingVertical: 14,
+    gap: 12,
   },
   input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
-  eyeBtn: { padding: 4 },
-  btnWrap: { marginTop: 4 },
   btn: {
-    paddingVertical: 17,
+    paddingVertical: 16,
     borderRadius: 14,
     alignItems: "center",
-    justifyContent: "center",
+    marginTop: 8,
+    shadowColor: "#00A86B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  btnText: {
-    fontSize: 16,
-    fontWeight: "700",
-    fontFamily: "Inter_700Bold",
-    color: "#000",
-  },
-  divider: { flexDirection: "row", alignItems: "center", gap: 12 },
-  dividerLine: { flex: 1, height: 1 },
-  dividerText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  btnDisabled: { opacity: 0.7 },
+  btnText: { fontSize: 16, fontWeight: "700", fontFamily: "Inter_700Bold", color: "#fff" },
   secondaryBtn: {
-    paddingVertical: 17,
+    paddingVertical: 16,
     borderRadius: 14,
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   secondaryBtnText: { fontSize: 15, fontWeight: "600", fontFamily: "Inter_600SemiBold" },
 });

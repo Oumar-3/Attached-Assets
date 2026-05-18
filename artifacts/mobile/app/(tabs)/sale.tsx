@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import React, { useState } from "react";
 import {
   Alert,
@@ -20,31 +19,28 @@ import { useStore } from "@/context/StoreContext";
 import { useColors } from "@/hooks/useColors";
 import type { CartItem, Client, Product, SaleItem } from "@/types";
 
-function ProductButton({ product, qty, onAdd }: { product: Product; qty: number; onAdd: () => void }) {
+function ProductButton({ product, onAdd }: { product: Product; onAdd: () => void }) {
   const colors = useColors();
   const isOut = product.quantity === 0;
   return (
     <TouchableOpacity
       style={[
         styles.productBtn,
-        { backgroundColor: colors.card, borderColor: qty > 0 ? colors.primary + "60" : colors.border },
-        isOut && { opacity: 0.35 },
+        { backgroundColor: colors.card, borderColor: isOut ? colors.border : colors.border },
+        isOut && { opacity: 0.5 },
       ]}
       onPress={isOut ? undefined : onAdd}
-      activeOpacity={0.7}
+      activeOpacity={0.75}
       disabled={isOut}
     >
-      {qty > 0 && (
-        <View style={[styles.qtyOverlay, { backgroundColor: colors.primary }]}>
-          <Text style={styles.qtyOverlayText}>{qty}</Text>
-        </View>
-      )}
-      <View style={[styles.productIcon, { backgroundColor: colors.primary + "15" }]}>
-        <Feather name="package" size={18} color={colors.primary} />
+      <View style={[styles.productIconBox, { backgroundColor: colors.primary + "15" }]}>
+        <Feather name="package" size={20} color={colors.primary} />
       </View>
       <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>{product.name}</Text>
-      <Text style={[styles.productPrice, { color: colors.primary }]}>{product.sellPrice.toLocaleString()}</Text>
-      <Text style={[styles.productUnit, { color: colors.mutedForeground }]}>FCFA</Text>
+      <Text style={[styles.productPrice, { color: colors.primary }]}>{product.sellPrice.toLocaleString()} F</Text>
+      <Text style={[styles.productStock, { color: isOut ? colors.destructive : colors.mutedForeground }]}>
+        Stock: {product.quantity}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -71,10 +67,6 @@ export default function SaleScreen() {
   const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()),
   );
-
-  function getCartQty(productId: string) {
-    return cart.find(c => c.product.id === productId)?.quantity ?? 0;
-  }
 
   function addToCart(product: Product) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -118,7 +110,7 @@ export default function SaleScreen() {
       setShowCart(false);
       setSelectedClient(null);
       setPayType("cash");
-      Alert.alert("✓ Vente confirmée", `${cartTotal.toLocaleString()} FCFA encaissés`, [{ text: "OK" }]);
+      Alert.alert("Vente confirmée", `Total: ${cartTotal.toLocaleString()} FCFA`, [{ text: "OK" }]);
     } finally {
       setConfirmLoading(false);
     }
@@ -134,35 +126,17 @@ export default function SaleScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 16 }]}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={[styles.title, { color: colors.text }]}>Caisse</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {products.length} produit{products.length !== 1 ? "s" : ""}
-            </Text>
-          </View>
-          {cartCount > 0 && (
-            <View style={[styles.cartSummary, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}>
-              <Feather name="shopping-cart" size={15} color={colors.primary} />
-              <Text style={[styles.cartSummaryText, { color: colors.primary }]}>{cartCount} · {cartTotal.toLocaleString()} F</Text>
-            </View>
-          )}
-        </View>
+      <View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Caisse</Text>
         <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Feather name="search" size={17} color="#444" />
+          <Feather name="search" size={18} color={colors.mutedForeground} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder="Rechercher un produit..."
-            placeholderTextColor="#444"
+            placeholderTextColor={colors.mutedForeground}
             value={search}
             onChangeText={setSearch}
           />
-          {search ? (
-            <TouchableOpacity onPress={() => setSearch("")}>
-              <Feather name="x" size={15} color="#555" />
-            </TouchableOpacity>
-          ) : null}
         </View>
       </View>
 
@@ -170,11 +144,9 @@ export default function SaleScreen() {
         data={filteredProducts}
         numColumns={2}
         keyExtractor={p => p.id}
-        renderItem={({ item }) => (
-          <ProductButton product={item} qty={getCartQty(item.id)} onAdd={() => addToCart(item)} />
-        )}
-        contentContainerStyle={[styles.grid, { paddingBottom: bottomPad + 110 }]}
-        columnWrapperStyle={styles.gridRow}
+        renderItem={({ item }) => <ProductButton product={item} onAdd={() => addToCart(item)} />}
+        contentContainerStyle={[styles.grid, { paddingBottom: bottomPad + 120 }]}
+        columnWrapperStyle={styles.row}
         ListEmptyComponent={
           <EmptyState icon="package" title="Aucun produit" subtitle="Ajoutez des produits pour commencer" />
         }
@@ -182,135 +154,109 @@ export default function SaleScreen() {
       />
 
       {cartCount > 0 && (
-        <TouchableOpacity
-          style={[styles.cartBar, { paddingBottom: bottomPad + 10 }]}
-          onPress={() => setShowCart(true)}
-          activeOpacity={0.9}
-        >
-          <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.cartBarInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>{cartCount}</Text>
+        <View style={[styles.cartBar, { backgroundColor: colors.primary, paddingBottom: bottomPad + 8 }]}>
+          <TouchableOpacity style={styles.cartBarContent} onPress={() => setShowCart(true)} activeOpacity={0.9}>
+            <View style={styles.cartCount}>
+              <Text style={styles.cartCountText}>{cartCount}</Text>
             </View>
-            <Text style={styles.cartBarLabel}>Voir le panier</Text>
+            <Text style={styles.cartBarText}>Voir le panier</Text>
             <Text style={styles.cartBarTotal}>{cartTotal.toLocaleString()} FCFA</Text>
-            <Feather name="chevron-right" size={18} color="#000" />
-          </LinearGradient>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       )}
 
       <Modal visible={showCart} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCart(false)}>
-        <View style={[styles.modal, { backgroundColor: "#000" }]}>
-          <View style={[styles.modalHandle, { backgroundColor: "#333" }]} />
+        <View style={[styles.modal, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Panier</Text>
-            <TouchableOpacity onPress={() => setShowCart(false)} style={[styles.closeBtn, { backgroundColor: colors.card }]}>
-              <Feather name="x" size={18} color={colors.text} />
+            <TouchableOpacity onPress={() => setShowCart(false)}>
+              <Feather name="x" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.cartItems} contentContainerStyle={{ padding: 16, gap: 10 }}>
             {cart.map(item => (
               <View key={item.product.id} style={[styles.cartItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.cartItemLeft}>
+                <View style={styles.cartItemInfo}>
                   <Text style={[styles.cartItemName, { color: colors.text }]}>{item.product.name}</Text>
-                  <Text style={[styles.cartItemUnit, { color: colors.primary }]}>
-                    {item.product.sellPrice.toLocaleString()} FCFA / unité
+                  <Text style={[styles.cartItemPrice, { color: colors.primary }]}>
+                    {item.product.sellPrice.toLocaleString()} FCFA × {item.quantity}
                   </Text>
                 </View>
-                <View style={styles.qtyRow}>
-                  <TouchableOpacity
-                    style={[styles.qtyBtn, { backgroundColor: colors.muted }]}
-                    onPress={() => updateQty(item.product.id, item.quantity - 1)}
-                  >
-                    <Feather name="minus" size={13} color={colors.text} />
+                <View style={styles.qtyControls}>
+                  <TouchableOpacity style={[styles.qtyBtn, { backgroundColor: colors.muted }]} onPress={() => updateQty(item.product.id, item.quantity - 1)}>
+                    <Feather name="minus" size={14} color={colors.text} />
                   </TouchableOpacity>
-                  <Text style={[styles.qtyNum, { color: colors.text }]}>{item.quantity}</Text>
-                  <TouchableOpacity
-                    style={[styles.qtyBtn, { backgroundColor: colors.muted }]}
-                    onPress={() => updateQty(item.product.id, item.quantity + 1)}
-                  >
-                    <Feather name="plus" size={13} color={colors.text} />
+                  <Text style={[styles.qtyText, { color: colors.text }]}>{item.quantity}</Text>
+                  <TouchableOpacity style={[styles.qtyBtn, { backgroundColor: colors.muted }]} onPress={() => updateQty(item.product.id, item.quantity + 1)}>
+                    <Feather name="plus" size={14} color={colors.text} />
                   </TouchableOpacity>
                 </View>
-                <Text style={[styles.cartItemTotal, { color: colors.text }]}>
-                  {(item.product.sellPrice * item.quantity).toLocaleString()} F
-                </Text>
               </View>
             ))}
           </ScrollView>
 
-          <View style={[styles.modalFooter, { borderTopColor: colors.border, paddingBottom: insets.bottom + 20 }]}>
+          <View style={[styles.modalFooter, { borderTopColor: colors.border, paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.payTypeRow}>
               {(["cash", "credit"] as const).map(t => (
                 <TouchableOpacity
                   key={t}
-                  style={[
-                    styles.payBtn,
-                    payType === t
-                      ? { backgroundColor: colors.primary }
-                      : { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 },
-                  ]}
+                  style={[styles.payTypeBtn, { borderColor: colors.border, backgroundColor: payType === t ? colors.primary : colors.card }]}
                   onPress={() => setPayType(t)}
                 >
-                  <Feather name={t === "cash" ? "dollar-sign" : "credit-card"} size={15} color={payType === t ? "#000" : colors.mutedForeground} />
-                  <Text style={[styles.payBtnText, { color: payType === t ? "#000" : colors.mutedForeground }]}>
+                  <Feather name={t === "cash" ? "dollar-sign" : "credit-card"} size={16} color={payType === t ? "#fff" : colors.mutedForeground} />
+                  <Text style={[styles.payTypeBtnText, { color: payType === t ? "#fff" : colors.mutedForeground }]}>
                     {t === "cash" ? "Espèces" : "Crédit"}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-
             {payType === "credit" && selectedClient && (
-              <View style={[styles.clientPill, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}>
-                <Feather name="user" size={13} color={colors.primary} />
-                <Text style={[styles.clientPillText, { color: colors.primary }]}>{selectedClient.name}</Text>
+              <View style={[styles.clientBadge, { backgroundColor: colors.primary + "15" }]}>
+                <Feather name="user" size={14} color={colors.primary} />
+                <Text style={[styles.clientBadgeText, { color: colors.primary }]}>{selectedClient.name}</Text>
                 <TouchableOpacity onPress={() => setSelectedClient(null)}>
-                  <Feather name="x" size={13} color={colors.primary} />
+                  <Feather name="x" size={14} color={colors.primary} />
                 </TouchableOpacity>
               </View>
             )}
-
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>Total à payer</Text>
+              <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>Total</Text>
               <Text style={[styles.totalAmount, { color: colors.text }]}>{cartTotal.toLocaleString()} FCFA</Text>
             </View>
-
             <TouchableOpacity
-              style={[styles.confirmBtnWrap, confirmLoading && { opacity: 0.7 }]}
+              style={[styles.confirmBtn, { backgroundColor: colors.primary }, confirmLoading && { opacity: 0.7 }]}
               onPress={confirmSale}
               disabled={confirmLoading}
-              activeOpacity={0.9}
+              activeOpacity={0.85}
             >
-              <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.confirmBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                <Feather name="check-circle" size={18} color="#000" />
-                <Text style={styles.confirmBtnText}>Confirmer la vente</Text>
-              </LinearGradient>
+              <Feather name="check-circle" size={20} color="#fff" />
+              <Text style={styles.confirmBtnText}>Confirmer la vente</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
       <Modal visible={showClientPicker} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setShowClientPicker(false)}>
-        <View style={[styles.modal, { backgroundColor: "#000" }]}>
-          <View style={[styles.modalHandle, { backgroundColor: "#333" }]} />
+        <View style={[styles.modal, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Choisir un client</Text>
-            <TouchableOpacity onPress={() => setShowClientPicker(false)} style={[styles.closeBtn, { backgroundColor: colors.card }]}>
-              <Feather name="x" size={18} color={colors.text} />
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Sélectionner un client</Text>
+            <TouchableOpacity onPress={() => setShowClientPicker(false)}>
+              <Feather name="x" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-            <View style={[styles.newClientBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Feather name="user-plus" size={16} color="#444" />
+          <View style={{ padding: 16, gap: 12 }}>
+            <View style={[styles.inputBox, { borderColor: colors.border, backgroundColor: colors.card }]}>
+              <Feather name="user-plus" size={18} color={colors.mutedForeground} />
               <TextInput
-                style={[styles.newClientInput, { color: colors.text }]}
-                placeholder="Nouveau client..."
-                placeholderTextColor="#444"
+                style={[styles.input, { color: colors.text }]}
+                placeholder="Nom du nouveau client"
+                placeholderTextColor={colors.mutedForeground}
                 value={newClientName}
                 onChangeText={setNewClientName}
               />
               <TouchableOpacity onPress={handleAddNewClient} disabled={!newClientName.trim()}>
-                <Feather name="plus-circle" size={22} color={newClientName.trim() ? colors.primary : "#333"} />
+                <Feather name="plus-circle" size={22} color={newClientName.trim() ? colors.primary : colors.border} />
               </TouchableOpacity>
             </View>
             {clients.map(c => (
@@ -329,7 +275,7 @@ export default function SaleScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
       </Modal>
     </View>
@@ -338,94 +284,82 @@ export default function SaleScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 12, gap: 14 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { fontSize: 28, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  subtitle: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
-  cartSummary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    gap: 12,
   },
-  cartSummaryText: { fontSize: 13, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
+  title: { fontSize: 28, fontFamily: "Inter_700Bold", fontWeight: "700" },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 13,
+    paddingVertical: 12,
     gap: 10,
   },
   searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
-  grid: { padding: 12, paddingTop: 8 },
-  gridRow: { gap: 10 },
+  grid: { padding: 12 },
+  row: { gap: 12 },
   productBtn: {
     flex: 1,
+    margin: 0,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    gap: 6,
-    marginBottom: 10,
-    minHeight: 130,
-    position: "relative",
+    gap: 8,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  qtyOverlay: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qtyOverlayText: { fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#000" },
-  productIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 2 },
-  productName: { fontSize: 13, fontFamily: "Inter_500Medium", fontWeight: "500", lineHeight: 18 },
-  productPrice: { fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  productUnit: { fontSize: 10, fontFamily: "Inter_400Regular", marginTop: -4 },
+  productIconBox: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  productName: { fontSize: 13, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
+  productPrice: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  productStock: { fontSize: 11, fontFamily: "Inter_400Regular" },
   cartBar: {
     position: "absolute",
     bottom: 72,
-    left: 12,
-    right: 12,
+    left: 16,
+    right: 16,
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#00A86B",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  cartBarInner: {
+  cartBarContent: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 18,
-    gap: 10,
+    padding: 16,
+    gap: 12,
   },
-  cartBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "rgba(0,0,0,0.2)",
+  cartCount: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.25)",
     alignItems: "center",
     justifyContent: "center",
   },
-  cartBadgeText: { fontSize: 13, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#000" },
-  cartBarLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#000" },
-  cartBarTotal: { fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#000" },
+  cartCountText: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#fff" },
+  cartBarText: { flex: 1, fontSize: 15, fontFamily: "Inter_600SemiBold", fontWeight: "600", color: "#fff" },
+  cartBarTotal: { fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#fff" },
   modal: { flex: 1 },
-  modalHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginTop: 12, marginBottom: 4 },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    padding: 20,
     borderBottomWidth: 1,
   },
   modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  closeBtn: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   cartItems: { flex: 1 },
   cartItem: {
     flexDirection: "row",
@@ -436,49 +370,55 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 8,
   },
-  cartItemLeft: { flex: 1, gap: 3 },
+  cartItemInfo: { flex: 1, gap: 4 },
   cartItemName: { fontSize: 14, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
-  cartItemUnit: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  qtyRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  cartItemPrice: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  qtyControls: { flexDirection: "row", alignItems: "center", gap: 10 },
   qtyBtn: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  qtyNum: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700", minWidth: 22, textAlign: "center" },
-  cartItemTotal: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700", minWidth: 60, textAlign: "right" },
-  modalFooter: { padding: 20, borderTopWidth: 1, gap: 14 },
-  payTypeRow: { flexDirection: "row", gap: 10 },
-  payBtn: {
+  qtyText: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700", minWidth: 20, textAlign: "center" },
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    gap: 12,
+  },
+  payTypeRow: { flexDirection: "row", gap: 12 },
+  payTypeBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 13,
-    borderRadius: 12,
-  },
-  payBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
-  clientPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
   },
-  clientPillText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium", fontWeight: "500" },
-  totalRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-  totalLabel: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  totalAmount: { fontSize: 28, fontFamily: "Inter_700Bold", fontWeight: "700", letterSpacing: -0.5 },
-  confirmBtnWrap: {},
+  payTypeBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
+  clientBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+  },
+  clientBadgeText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium", fontWeight: "500" },
+  totalRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  totalLabel: { fontSize: 16, fontFamily: "Inter_400Regular" },
+  totalAmount: { fontSize: 24, fontFamily: "Inter_700Bold", fontWeight: "700" },
   confirmBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    paddingVertical: 17,
+    paddingVertical: 16,
     borderRadius: 16,
+    shadowColor: "#00A86B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  confirmBtnText: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#000" },
-  newClientBox: {
+  confirmBtnText: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#fff" },
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
@@ -486,9 +426,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 12,
-    marginBottom: 4,
   },
-  newClientInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
   clientRow: {
     flexDirection: "row",
     alignItems: "center",
