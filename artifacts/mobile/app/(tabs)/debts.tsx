@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
@@ -37,6 +38,7 @@ export default function DebtsScreen() {
   );
 
   const totalDebt = useMemo(() => clients.reduce((s, c) => s + c.totalDebt, 0), [clients]);
+  const debtors = useMemo(() => clients.filter(c => c.totalDebt > 0).length, [clients]);
 
   async function handleAdd() {
     if (!newName.trim()) return;
@@ -53,73 +55,93 @@ export default function DebtsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 16, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { paddingTop: topPad + 16 }]}>
         <View style={styles.headerRow}>
-          <Text style={[styles.title, { color: colors.text }]}>Clients</Text>
+          <View>
+            <Text style={[styles.title, { color: colors.text }]}>Clients</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              {clients.length} client{clients.length !== 1 ? "s" : ""}
+              {debtors > 0 ? ` · ${debtors} débiteur${debtors > 1 ? "s" : ""}` : ""}
+            </Text>
+          </View>
           <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            style={styles.addBtn}
             onPress={() => setShowAdd(s => !s)}
             activeOpacity={0.85}
           >
-            <Feather name={showAdd ? "x" : "plus"} size={20} color="#fff" />
+            <LinearGradient
+              colors={showAdd ? ["#333", "#222"] : [colors.primary, colors.primaryDark]}
+              style={styles.addBtnInner}
+            >
+              <Feather name={showAdd ? "x" : "plus"} size={20} color={showAdd ? "#fff" : "#000"} />
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
         {totalDebt > 0 && (
-          <View style={[styles.debtBanner, { backgroundColor: colors.destructive + "12", borderColor: colors.destructive + "25" }]}>
-            <Feather name="alert-circle" size={16} color={colors.destructive} />
-            <Text style={[styles.debtBannerText, { color: colors.destructive }]}>
-              Total des dettes : <Text style={{ fontFamily: "Inter_700Bold", fontWeight: "700" }}>{totalDebt.toLocaleString()} FCFA</Text>
-            </Text>
+          <View style={[styles.debtBanner, { backgroundColor: "#1A0000", borderColor: colors.destructive + "25" }]}>
+            <View style={[styles.debtBannerIcon, { backgroundColor: colors.destructive + "20" }]}>
+              <Feather name="trending-down" size={14} color={colors.destructive} />
+            </View>
+            <View style={styles.debtBannerText}>
+              <Text style={[styles.debtBannerLabel, { color: colors.mutedForeground }]}>Dettes totales</Text>
+              <Text style={[styles.debtBannerAmount, { color: colors.destructive }]}>
+                {totalDebt.toLocaleString()} FCFA
+              </Text>
+            </View>
           </View>
         )}
 
         {showAdd && (
           <View style={[styles.addForm, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.addFormTitle, { color: colors.text }]}>Nouveau client</Text>
-            <View style={[styles.inputBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
-              <Feather name="user" size={16} color={colors.mutedForeground} />
+            <View style={[styles.inputBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Feather name="user" size={15} color="#444" />
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 placeholder="Nom du client"
-                placeholderTextColor={colors.mutedForeground}
+                placeholderTextColor="#444"
                 value={newName}
                 onChangeText={setNewName}
               />
             </View>
-            <View style={[styles.inputBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
-              <Feather name="phone" size={16} color={colors.mutedForeground} />
+            <View style={[styles.inputBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Feather name="phone" size={15} color="#444" />
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 placeholder="Téléphone (optionnel)"
-                placeholderTextColor={colors.mutedForeground}
+                placeholderTextColor="#444"
                 value={newPhone}
                 onChangeText={setNewPhone}
                 keyboardType="phone-pad"
               />
             </View>
             <TouchableOpacity
-              style={[styles.addFormBtn, { backgroundColor: colors.primary }, adding && { opacity: 0.7 }]}
+              style={[styles.addFormBtnWrap, (adding || !newName.trim()) && { opacity: 0.5 }]}
               onPress={handleAdd}
               disabled={adding || !newName.trim()}
               activeOpacity={0.85}
             >
-              <Text style={styles.addFormBtnText}>Ajouter</Text>
+              <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.addFormBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                <Text style={styles.addFormBtnText}>Ajouter le client</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         )}
 
         <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Feather name="search" size={18} color={colors.mutedForeground} />
+          <Feather name="search" size={17} color="#444" />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder="Rechercher un client..."
-            placeholderTextColor={colors.mutedForeground}
+            placeholderTextColor="#444"
             value={search}
             onChangeText={setSearch}
           />
         </View>
       </View>
+
+      <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
       <ScrollView
         style={styles.list}
@@ -152,67 +174,60 @@ export default function DebtsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  header: { paddingHorizontal: 20, paddingBottom: 12, gap: 14 },
+  headerRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
   title: { fontSize: 28, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  addBtn: {
+  subtitle: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 3 },
+  addBtn: { borderRadius: 22 },
+  addBtnInner: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#00A86B",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
   debtBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    padding: 12,
-    borderRadius: 12,
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
     borderWidth: 1,
   },
-  debtBannerText: { fontSize: 13, fontFamily: "Inter_500Medium", fontWeight: "500", flex: 1 },
+  debtBannerIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  debtBannerText: { gap: 1 },
+  debtBannerLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  debtBannerAmount: { fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700" },
   addForm: {
     borderRadius: 16,
     borderWidth: 1,
     padding: 16,
     gap: 12,
   },
-  addFormTitle: { fontSize: 16, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  addFormTitle: { fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700" },
   inputBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
     gap: 10,
   },
   input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
-  addFormBtn: {
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  addFormBtnText: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#fff" },
+  addFormBtnWrap: {},
+  addFormBtn: { paddingVertical: 13, borderRadius: 12, alignItems: "center" },
+  addFormBtnText: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700", color: "#000" },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
     gap: 10,
   },
   searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  divider: { height: 1 },
   list: { flex: 1 },
 });

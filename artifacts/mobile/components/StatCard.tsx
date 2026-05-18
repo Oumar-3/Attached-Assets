@@ -1,7 +1,7 @@
-import { Feather } from '@expo/vector-icons';
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useColors } from '@/hooks/useColors';
+import { Feather } from "@expo/vector-icons";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { useColors } from "@/hooks/useColors";
 
 type Props = {
   title: string;
@@ -17,8 +17,8 @@ export function StatCard({ title, value, icon, color, subtitle }: Props) {
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={[styles.iconBox, { backgroundColor: accent + '18' }]}>
-        <Feather name={icon} size={20} color={accent} />
+      <View style={[styles.iconBox, { backgroundColor: accent + "20" }]}>
+        <Feather name={icon} size={18} color={accent} />
       </View>
       <Text style={[styles.value, { color: colors.text }]} numberOfLines={1}>{value}</Text>
       <Text style={[styles.title, { color: colors.mutedForeground }]}>{title}</Text>
@@ -31,37 +31,35 @@ export function StatCard({ title, value, icon, color, subtitle }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    gap: 6,
+    gap: 5,
     flex: 1,
     minWidth: 140,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
   },
   iconBox: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
   },
   value: {
-    fontSize: 22,
-    fontWeight: '700',
-    fontFamily: 'Inter_700Bold',
+    fontSize: 24,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
   },
   title: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    letterSpacing: 0.2,
   },
   subtitle: {
     fontSize: 11,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: "Inter_600SemiBold",
+    fontWeight: "600",
+    marginTop: 1,
   },
 });
