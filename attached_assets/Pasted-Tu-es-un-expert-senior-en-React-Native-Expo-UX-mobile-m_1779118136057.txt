@@ -1,0 +1,299 @@
+Tu es un expert senior en React Native, Expo, UX mobile moderne et architecture scalable.
+
+Ta mission est de développer le FRONTEND d’une application mobile intelligente de gestion de boutique destinée aux petites boutiques de quartier au Sénégal et en Afrique.
+
+L’application doit être :
+
+* ultra simple,
+* rapide,
+* moderne,
+* intuitive,
+* optimisée Android,
+* adaptée aux téléphones d’entrée de gamme,
+* pensée pour des utilisateurs peu techniques.
+
+Le projet doit avoir une architecture professionnelle, propre et évolutive.
+
+# STACK À UTILISER
+
+## Mobile
+
+* React Native
+* Expo
+* TypeScript
+
+## Navigation
+
+* Expo Router
+
+## UI
+
+* NativeWind (Tailwind React Native)
+* React Native Reanimated
+* React Native Gesture Handler
+* Lucide Icons
+
+## Gestion d’état
+
+* Zustand
+
+## Requêtes API
+
+* Axios
+* React Query (TanStack Query)
+
+## Stockage local
+
+* AsyncStorage
+* SQLite (préparation offline)
+
+## Formulaires
+
+* React Hook Form
+* Zod validation
+
+# OBJECTIF DE LA PREMIÈRE VERSION
+
+Développer un MVP moderne, rapide et professionnel avec les fonctionnalités suivantes :
+
+# 1. AUTHENTIFICATION
+
+Créer :
+
+* écran splash screen,
+* onboarding moderne,
+* connexion,
+* inscription,
+* récupération mot de passe.
+
+Le design doit être :
+
+* moderne,
+* minimaliste,
+* fluide,
+* style fintech africaine moderne.
+
+# 2. DASHBOARD PRINCIPAL
+
+Créer un dashboard affichant :
+
+* ventes du jour,
+* bénéfices estimés,
+* stock faible,
+* produits populaires,
+* dettes clients,
+* statistiques rapides.
+
+Le dashboard doit être :
+
+* très visuel,
+* facile à comprendre,
+* animé,
+* moderne.
+
+Ajouter :
+
+* cartes statistiques,
+* graphiques simples,
+* alertes intelligentes,
+* raccourcis rapides.
+
+# 3. GESTION DES PRODUITS
+
+Créer :
+
+## Liste produits
+
+* recherche instantanée,
+* filtre catégorie,
+* cartes produits modernes,
+* image produit,
+* stock visible,
+* badge stock faible.
+
+## Ajout produit
+
+Créer un écran élégant avec :
+
+* upload photo,
+* nom produit,
+* prix achat,
+* prix vente,
+* quantité,
+* catégorie,
+* fournisseur.
+
+## Détails produit
+
+Afficher :
+
+* historique ventes,
+* stock,
+* bénéfices,
+* informations produit.
+
+# 4. VENTE RAPIDE (CAISSE)
+
+Créer une interface ultra rapide type POS :
+
+* gros boutons,
+* grille produits,
+* panier dynamique,
+* calcul automatique total,
+* validation vente.
+
+Fonctionnalités :
+
+* ajouter produit au panier,
+* modifier quantité,
+* supprimer produit,
+* paiement cash,
+* vente à crédit.
+
+Le design doit être extrêmement rapide et tactile.
+
+# 5. GESTION DES DETTES CLIENTS
+
+Créer :
+
+## Liste clients
+
+* photo,
+* nom,
+* montant dette,
+* statut paiement.
+
+## Détails client
+
+* historique achats,
+* remboursements,
+* dette restante.
+
+## Ajout dette
+
+* formulaire simple,
+* validation rapide.
+
+# 6. ALERTES & NOTIFICATIONS
+
+Créer une section :
+
+* stock faible,
+* produits populaires,
+* alertes ventes,
+* notifications intelligentes.
+
+# 7. NAVIGATION
+
+Créer une navigation professionnelle avec :
+
+Bottom Tab :
+
+* Dashboard
+* Produits
+* Vente
+* Dettes
+* Profil
+
+Ajouter :
+
+* animations fluides,
+* transitions modernes,
+* micro interactions.
+
+# 8. UI / UX
+
+Le design doit être :
+
+* premium,
+* moderne,
+* africain,
+* simple,
+* coloré mais professionnel.
+
+Inspirations :
+
+* fintech modernes,
+* applications POS,
+* applications de gestion commerciale.
+
+Utiliser :
+
+* gros boutons,
+* coins arrondis,
+* ombres douces,
+* cartes modernes,
+* animations élégantes,
+* excellente lisibilité.
+
+# 9. ARCHITECTURE DU PROJET
+
+Créer une architecture scalable :
+
+src/
+├── app/
+├── components/
+├── features/
+├── services/
+├── store/
+├── hooks/
+├── utils/
+├── constants/
+├── types/
+├── assets/
+
+Créer :
+
+* composants réutilisables,
+* hooks personnalisés,
+* services API,
+* gestion globale état,
+* thèmes,
+* constantes centralisées.
+
+# 10. ÉCRANS À CRÉER
+
+Créer entièrement :
+
+* Splash Screen
+* Onboarding
+* Login
+* Register
+* Dashboard
+* Produits
+* Ajouter Produit
+* Détails Produit
+* Vente Rapide
+* Panier
+* Clients
+* Détails Dette
+* Notifications
+* Profil
+* Paramètres
+
+# 11. BONUS IMPORTANT
+
+Ajouter :
+
+* dark mode,
+* mode offline préparé,
+* skeleton loaders,
+* animations Reanimated,
+* pull to refresh,
+* empty states élégants,
+* loading states modernes,
+* gestion erreurs élégante.
+
+# OBJECTIF FINAL
+
+Le résultat doit ressembler à une vraie application SaaS moderne prête pour production et publication sur Play Store.
+
+Le code doit être :
+
+* propre,
+* maintenable,
+* scalable,
+* optimisé,
+* professionnel.
+
+Je veux une application mobile React Native impressionnante visuellement avec une excellente expérience utilisateur.
