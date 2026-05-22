@@ -17,11 +17,15 @@ export function StatCard({ title, value, icon, color, subtitle }: Props) {
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <View style={[styles.iconBox, { backgroundColor: accent + '18' }]}>
-        <Feather name={icon} size={20} color={accent} />
+      <View style={styles.topRow}>
+        <Text style={[styles.title, { color: colors.mutedForeground }]} numberOfLines={1}>
+          {title}
+        </Text>
+        <View style={[styles.iconBox, { backgroundColor: accent + '16' }]}>
+          <Feather name={icon} size={17} color={accent} />
+        </View>
       </View>
       <Text style={[styles.value, { color: colors.text }]} numberOfLines={1}>{value}</Text>
-      <Text style={[styles.title, { color: colors.mutedForeground }]}>{title}</Text>
       {subtitle ? (
         <Text style={[styles.subtitle, { color: accent }]}>{subtitle}</Text>
       ) : null}
@@ -31,33 +35,39 @@ export function StatCard({ title, value, icon, color, subtitle }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 14,
     borderWidth: 1,
-    gap: 6,
+    gap: 7,
     flex: 1,
     minWidth: 140,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 1,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
   },
   value: {
-    fontSize: 22,
+    fontSize: 23,
     fontWeight: '700',
     fontFamily: 'Inter_700Bold',
   },
   title: {
     fontSize: 12,
+    flex: 1,
     fontFamily: 'Inter_400Regular',
   },
   subtitle: {

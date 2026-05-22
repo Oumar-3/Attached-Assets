@@ -1,45 +1,21 @@
 import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, View, useColorScheme, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 
-function NativeTabLayout() {
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Dashboard</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="products">
-        <Icon sf={{ default: "cube.box", selected: "cube.box.fill" }} />
-        <Label>Produits</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="sale">
-        <Icon sf={{ default: "cart", selected: "cart.fill" }} />
-        <Label>Vente</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="debts">
-        <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
-        <Label>Dettes</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
-        <Label>Profil</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
-
-function ClassicTabLayout() {
+export default function TabLayout() {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const bottomInset = isWeb ? 34 : Math.max(insets.bottom, 10);
+  const dockWidth = isWeb ? Math.min(width - 32, 720) : undefined;
 
   return (
     <Tabs
@@ -50,12 +26,28 @@ function ClassicTabLayout() {
         tabBarStyle: {
           position: "absolute",
           backgroundColor: isIOS ? "transparent" : colors.tabBar,
-          borderTopWidth: 1,
+          borderTopWidth: isWeb ? 0 : 1,
           borderTopColor: colors.tabBarBorder,
-          elevation: 0,
-          height: isWeb ? 84 : 72,
-          paddingBottom: isWeb ? 34 : 12,
-          paddingTop: 8,
+          borderWidth: isWeb ? 1 : 0,
+          borderColor: colors.tabBarBorder,
+          elevation: isWeb ? 0 : 0,
+          height: isWeb ? 68 : 62 + bottomInset,
+          paddingBottom: isWeb ? 8 : bottomInset,
+          paddingTop: isWeb ? 8 : 8,
+          ...(isWeb
+            ? {
+                left: "50%",
+                right: undefined,
+                bottom: 12,
+                width: dockWidth,
+                borderRadius: 18,
+                transform: [{ translateX: -(dockWidth ?? 0) / 2 }],
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: isDark ? 0.28 : 0.1,
+                shadowRadius: 22,
+              }
+            : null),
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -68,15 +60,20 @@ function ClassicTabLayout() {
             <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.tabBar }]} />
           ) : null,
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontFamily: "Inter_500Medium",
+          fontSize: isWeb ? 12 : 10,
+          fontFamily: "Inter_600SemiBold",
+          fontWeight: "600",
+        },
+        tabBarItemStyle: {
+          borderRadius: isWeb ? 14 : 0,
+          marginHorizontal: isWeb ? 4 : 0,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Dashboard",
+          title: "Accueil",
           tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} />,
         }}
       />
@@ -90,9 +87,10 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="sale"
         options={{
-          title: "Vente",
+          title: "",
+          tabBarLabel: () => null,
           tabBarIcon: ({ color }) => (
-            <View style={[styles.saleIconBox, { backgroundColor: colors.primary }]}>
+            <View style={[styles.saleIconBox, isWeb && styles.saleIconBoxWeb, { backgroundColor: colors.primary }]}>
               <Feather name="shopping-cart" size={22} color="#fff" />
             </View>
           ),
@@ -106,35 +104,35 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="history"
         options={{
-          title: "Profil",
-          tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
+          title: "Historique",
+          tabBarIcon: ({ color }) => <Feather name="file-text" size={22} color={color} />,
         }}
       />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }
 
-export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
-  }
-  return <ClassicTabLayout />;
-}
-
 const styles = StyleSheet.create({
   saleIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 2,
     shadowColor: "#00A86B",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 6,
+  },
+  saleIconBoxWeb: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginBottom: 0,
   },
 });

@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,14 +13,25 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SamaStockLogo } from "@/components/SamaStockLogo";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
+import { useDebts } from "@/context/DebtsContext";
+import { useProducts } from "@/context/ProductsContext";
+import { useSales } from "@/context/SalesContext";
+import { useShopProfile } from "@/context/ShopProfileContext";
+import { createLocalMainShopForCloudUserAsync, resetLocalDataForCloudUserAsync } from "@/services/localAccountData";
+import { syncBasicTablesAsync } from "@/services/sync/basicSync";
 
 export default function RegisterScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { register } = useAuth();
+  const { saveProfile, refreshProfile } = useShopProfile();
+  const { refreshProducts } = useProducts();
+  const { refreshSales } = useSales();
+  const { refreshDebts } = useDebts();
 
   const [name, setName] = useState("");
   const [shopName, setShopName] = useState("");
@@ -29,23 +40,43 @@ export default function RegisterScreen() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const submittingRef = useRef(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   async function handleRegister() {
+    if (submittingRef.current) return;
     if (!name.trim() || !shopName.trim() || !email.trim() || !password) {
       return setError("Remplissez tous les champs");
     }
     if (password.length < 6) return setError("Mot de passe trop court (min 6 caractères)");
+    submittingRef.current = true;
     setError("");
     setLoading(true);
     try {
-      await register(name, email, password, shopName);
-      router.replace("/(tabs)/");
+      const nextUser = await register(name, email, password, shopName);
+      await resetLocalDataForCloudUserAsync(nextUser.id);
+      await createLocalMainShopForCloudUserAsync(nextUser.id, shopName, name);
+      await Promise.all([refreshProducts(), refreshSales(), refreshDebts()]);
+      await saveProfile({
+        shopName: shopName.trim(),
+        ownerName: name.trim(),
+        phone: "",
+        address: "",
+      });
+      try {
+        await syncBasicTablesAsync();
+        await refreshProfile();
+      } catch (syncError) {
+        console.warn("Register sync failed", syncError);
+        // The account and local shop are ready even if the first sync fails.
+      }
+      router.replace("/(tabs)");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur d'inscription");
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   }
@@ -64,8 +95,8 @@ export default function RegisterScreen() {
         </View>
 
         <View style={[styles.form, { paddingBottom: bottomPad + 24 }]}>
-          <View style={[styles.iconBox, { backgroundColor: colors.primary }]}>
-            <Feather name="user-plus" size={28} color="#fff" />
+          <View style={[styles.iconBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <SamaStockLogo size={54} />
           </View>
           <Text style={[styles.title, { color: colors.text }]}>Créer un compte</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
@@ -146,6 +177,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
+    borderWidth: 1,
     shadowColor: "#00A86B",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,

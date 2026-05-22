@@ -1,83 +1,302 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from '@/types';
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+
+import { getSupabaseClient, isSupabaseConfigured } from "@/services/supabase/client";
+import { cancelCloudBackup } from "@/services/sync/autoBackup";
+
+export type AppUser = {
+  id: string;
+  name: string;
+  email: string;
+  shopName: string;
+};
 
 type AuthContextType = {
-  user: User | null;
+  user: AppUser | null;
+  isConfigured: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, shopName: string) => Promise<void>;
+  sessionKey: number;
+  login: (email: string, password: string) => Promise<AppUser>;
+  register: (name: string, email: string, password: string, shopName: string) => Promise<AppUser>;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const USERS_KEY = '@boutique_users';
-const SESSION_KEY = '@boutique_session';
+function mapUser(user: SupabaseUser | null): AppUser | null {
+  if (!user) return null;
+  return {
+    id: user.id,
+    email: user.email ?? "",
+    name: typeof user.user_metadata.name === "string" ? user.user_metadata.name : "",
+    shopName: typeof user.user_metadata.shop_name === "string" ? user.user_metadata.shop_name : "",
+  };
+}
+
+function requireSupabase() {
+  if (!isSupabaseConfigured()) {
+    throw new Error("La connexion en ligne n'est pas configuree.");
+  }
+  return getSupabaseClient();
+}
+
+function isInvalidRefreshToken(error: unknown) {
+  return error instanceof Error && error.message.toLowerCase().includes("refresh token");
+}
+
+async function clearLocalAuthSession() {
+  try {
+    await getSupabaseClient().auth.signOut({ scope: "local" });
+  } catch {
+    // The stored session can already be broken. In that case, keep the app usable.
+  }
+  await clearStoredSupabaseSession();
+}
+
+async function clearStoredSupabaseSession() {
+  const isSupabaseAuthKey = (key: string) =>
+    key.startsWith("sb-") || key.includes("supabase.auth") || key.includes("auth-token");
+
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const authKeys = keys.filter(isSupabaseAuthKey);
+    if (authKeys.length > 0) {
+      await AsyncStorage.multiRemove(authKeys);
+    }
+  } catch {
+    // Best effort cleanup only.
+  }
+  try {
+    const localStorage = globalThis.localStorage;
+    const sessionStorage = globalThis.sessionStorage;
+    for (const storage of [localStorage, sessionStorage]) {
+      if (!storage) continue;
+      const keysToRemove: string[] = [];
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (key && isSupabaseAuthKey(key)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => storage.removeItem(key));
+    }
+  } catch {
+    // Web storage may be unavailable in some runtimes.
+  }
+  try {
+    if (Platform.OS === "web" && "indexedDB" in globalThis) {
+      const indexedDBFactory = globalThis.indexedDB;
+      if ("databases" in indexedDBFactory && typeof indexedDBFactory.databases === "function") {
+        const databases = await indexedDBFactory.databases();
+        await Promise.all(
+          databases
+            .map(database => database.name)
+            .filter((name): name is string => typeof name === "string" && (name.startsWith("sb-") || name.includes("supabase")))
+            .map(name => new Promise<void>(resolve => {
+              const request = indexedDBFactory.deleteDatabase(name);
+              request.onsuccess = () => resolve();
+              request.onerror = () => resolve();
+              request.onblocked = () => resolve();
+            })),
+        );
+      }
+    }
+  } catch {
+    // IndexedDB cleanup is best effort on web.
+  }
+}
+
+function warnAuthLogoutError(error: unknown) {
+  if (!isInvalidRefreshToken(error)) {
+    console.warn("Local logout failed", error);
+  }
+}
+
+function getFriendlyAuthErrorMessage(message: string) {
+  const lowerMessage = message.toLowerCase();
+  if (lowerMessage.includes("email rate limit")) {
+    return "Trop de tentatives de creation de compte. Patientez quelques minutes, puis reessayez ou connectez-vous si le compte existe deja.";
+  }
+  if (lowerMessage.includes("invalid refresh token") || lowerMessage.includes("refresh token not found")) {
+    return "Votre ancienne session a expire. Reconnectez-vous.";
+  }
+  if (lowerMessage.includes("user already registered") || lowerMessage.includes("already registered")) {
+    return "Ce compte existe deja. Utilisez la page de connexion.";
+  }
+  if (lowerMessage.includes("invalid login credentials")) {
+    return "Email ou mot de passe incorrect.";
+  }
+  return message;
+}
+
+async function getVerifiedCurrentUser() {
+  const { data, error } = await requireSupabase().auth.getUser();
+  if (error) throw new Error(getFriendlyAuthErrorMessage(error.message));
+  if (!data.user) throw new Error("Session Supabase invalide. Reconnectez-vous.");
+  return data.user;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionKey, setSessionKey] = useState(0);
+  const authMutationRef = useRef(0);
+  const isLoggingOutRef = useRef(false);
+  const isConfigured = isSupabaseConfigured();
 
   useEffect(() => {
-    restoreSession();
-  }, []);
-
-  async function restoreSession() {
-    try {
-      const sessionJson = await AsyncStorage.getItem(SESSION_KEY);
-      if (sessionJson) {
-        setUser(JSON.parse(sessionJson) as User);
-      }
-    } catch {
-      // ignore
-    } finally {
+    if (!isConfigured) {
       setIsLoading(false);
+      return;
     }
-  }
+
+    const supabase = getSupabaseClient();
+    const initialAuthMutation = authMutationRef.current;
+    supabase.auth.getSession()
+      .then(async ({ data }) => {
+        if (authMutationRef.current !== initialAuthMutation) return;
+        if (!data.session) {
+          setUser(null);
+          setSessionKey(key => key + 1);
+          return;
+        }
+
+        const { data: userData, error } = await supabase.auth.getUser();
+        if (authMutationRef.current !== initialAuthMutation) return;
+        if (error || !userData.user) {
+          await clearStoredSupabaseSession();
+          setUser(null);
+          setSessionKey(key => key + 1);
+          return;
+        }
+
+        setUser(mapUser(userData.user));
+        setSessionKey(key => key + 1);
+      })
+      .catch(async error => {
+        if (authMutationRef.current !== initialAuthMutation) return;
+        if (isInvalidRefreshToken(error)) {
+          await clearStoredSupabaseSession();
+        } else {
+          console.warn("Auth session restore failed", error);
+        }
+        setUser(null);
+        setSessionKey(key => key + 1);
+      })
+      .finally(() => setIsLoading(false));
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION") return;
+      if (event === "SIGNED_OUT" || isLoggingOutRef.current) {
+        setUser(null);
+        setSessionKey(key => key + 1);
+        return;
+      }
+      const nextUser = mapUser(session?.user ?? null);
+      setUser(nextUser);
+      setSessionKey(key => key + 1);
+    });
+
+    return () => {
+      subscription.subscription.unsubscribe();
+    };
+  }, [isConfigured]);
 
   async function login(email: string, password: string) {
-    const usersJson = await AsyncStorage.getItem(USERS_KEY);
-    const users: Array<User & { password: string }> = usersJson ? JSON.parse(usersJson) : [];
-    const found = users.find(u => u.email === email.toLowerCase().trim() && u.password === password);
-    if (!found) throw new Error('Email ou mot de passe incorrect');
-    const { password: _, ...userData } = found;
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
-    setUser(userData);
+    const supabase = requireSupabase();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.toLowerCase().trim(),
+      password,
+    });
+    if (error) throw new Error(getFriendlyAuthErrorMessage(error.message));
+    if (!data.session) throw new Error("Connexion impossible: aucune session n'a ete ouverte.");
+    const verifiedUser = await getVerifiedCurrentUser();
+    if (verifiedUser.email?.toLowerCase() !== email.toLowerCase().trim()) {
+      await clearStoredSupabaseSession();
+      throw new Error("La session ouverte ne correspond pas a ce compte. Reconnectez-vous.");
+    }
+    const nextUser = mapUser(verifiedUser);
+    if (!nextUser) throw new Error("Session introuvable apres connexion.");
+    authMutationRef.current += 1;
+    setUser(nextUser);
+    setSessionKey(key => key + 1);
+    return nextUser;
   }
 
   async function register(name: string, email: string, password: string, shopName: string) {
-    const usersJson = await AsyncStorage.getItem(USERS_KEY);
-    const users: Array<User & { password: string }> = usersJson ? JSON.parse(usersJson) : [];
-    const exists = users.find(u => u.email === email.toLowerCase().trim());
-    if (exists) throw new Error('Cet email est déjà utilisé');
-    const newUser: User & { password: string } = {
-      id: Date.now().toString(),
-      name: name.trim(),
+    const supabase = requireSupabase();
+    const { data, error } = await supabase.auth.signUp({
       email: email.toLowerCase().trim(),
-      shopName: shopName.trim(),
       password,
-    };
-    await AsyncStorage.setItem(USERS_KEY, JSON.stringify([...users, newUser]));
-    const { password: _, ...userData } = newUser;
-    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userData));
-    setUser(userData);
+      options: {
+        data: {
+          name: name.trim(),
+          shop_name: shopName.trim(),
+        },
+      },
+    });
+    if (error) throw new Error(getFriendlyAuthErrorMessage(error.message));
+    if (!data.session) {
+      await clearStoredSupabaseSession();
+      setUser(null);
+      throw new Error("Compte cree. Confirmez votre email, puis connectez-vous.");
+    }
+    const verifiedUser = await getVerifiedCurrentUser();
+    if (verifiedUser.email?.toLowerCase() !== email.toLowerCase().trim()) {
+      await clearStoredSupabaseSession();
+      throw new Error("La session creee ne correspond pas a ce compte. Reconnectez-vous.");
+    }
+    const nextUser = mapUser(verifiedUser);
+    if (!nextUser) throw new Error("Compte cree, mais session introuvable.");
+    authMutationRef.current += 1;
+    setUser(nextUser);
+    setSessionKey(key => key + 1);
+    return nextUser;
   }
 
   async function logout() {
-    await AsyncStorage.removeItem(SESSION_KEY);
+    cancelCloudBackup();
+    authMutationRef.current += 1;
+    isLoggingOutRef.current = true;
     setUser(null);
+    setSessionKey(key => key + 1);
+
+    const supabase = requireSupabase();
+    try {
+      supabase.auth.stopAutoRefresh();
+      const { error } = await supabase.auth.signOut();
+      if (error) warnAuthLogoutError(error);
+    } catch (error) {
+      warnAuthLogoutError(error);
+    }
+    await clearStoredSupabaseSession();
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        await supabase.auth.signOut({ scope: "local" });
+        await clearStoredSupabaseSession();
+      }
+    } catch {
+      await clearStoredSupabaseSession();
+    } finally {
+      setUser(null);
+      setSessionKey(key => key + 1);
+      isLoggingOutRef.current = false;
+    }
   }
 
-  return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ user, isConfigured, isLoading, sessionKey, login, register, logout }),
+    [isConfigured, isLoading, sessionKey, user],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }

@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet, View, type DimensionValue } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 
 type Props = { count?: number };
 
-function ShimmerBar({ width, height = 16, colors }: { width: string | number; height?: number; colors: ReturnType<typeof useColors> }) {
+function ShimmerBar({ width, height = 16, colors }: { width: DimensionValue; height?: number; colors: ReturnType<typeof useColors> }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(

@@ -1,44 +1,86 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Redirect, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
-import { useColors } from "@/hooks/useColors";
+import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Text, View } from "react-native";
 import { useAuth } from "@/context/AuthContext";
-
-const ONBOARDING_KEY = "@boutique_onboarding_seen";
+import { useDebts } from "@/context/DebtsContext";
+import { useDatabase } from "@/context/DatabaseContext";
+import { useProducts } from "@/context/ProductsContext";
+import { useSales } from "@/context/SalesContext";
+import { useShopProfile } from "@/context/ShopProfileContext";
+import { useColors } from "@/hooks/useColors";
+import { clearCloudUserLocalDataAsync, getActiveCloudOwnerIdAsync, isOfflineModeAsync, prepareLocalDataForCloudUserAsync } from "@/services/localAccountData";
+import { syncBasicTablesAsync } from "@/services/sync/basicSync";
 
 export default function Index() {
-  const { user, isLoading } = useAuth();
   const router = useRouter();
   const colors = useColors();
-  const [checking, setChecking] = useState(true);
+  const { error } = useDatabase();
+  const { user, isLoading: authLoading, sessionKey } = useAuth();
+  const { refreshDebts } = useDebts();
+  const { refreshProducts } = useProducts();
+  const { refreshSales } = useSales();
+  const { profile, isLoading, refreshProfile } = useShopProfile();
+  const [restoring, setRestoring] = useState(false);
+  const [refreshingLoggedOut, setRefreshingLoggedOut] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const restoredSessionKey = useRef<number | null>(null);
+  const refreshedLoggedOutSessionKey = useRef<number | null>(null);
 
   useEffect(() => {
-    if (isLoading) return;
-    async function check() {
-      try {
-        const seen = await AsyncStorage.getItem(ONBOARDING_KEY);
-        if (!seen) {
-          router.replace("/onboarding");
-        } else if (!user) {
-          router.replace("/(auth)/login");
-        } else {
-          router.replace("/(tabs)/");
-        }
-      } finally {
-        setChecking(false);
-      }
+    if (authLoading || isLoading || error || restoring || refreshingLoggedOut) return;
+
+    if (user && restoredSessionKey.current !== sessionKey) {
+      restoredSessionKey.current = sessionKey;
+      refreshedLoggedOutSessionKey.current = null;
+      setRestoring(true);
+      prepareLocalDataForCloudUserAsync(user.id)
+        .then(() => syncBasicTablesAsync())
+        .then(() => Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]))
+        .catch(error => console.warn("Startup restore failed", error))
+        .finally(() => {
+          setRestoring(false);
+          router.replace("/(tabs)");
+        });
+      return;
     }
-    check();
-  }, [user, isLoading]);
 
-  if (isLoading || checking) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
+    if (!user && refreshedLoggedOutSessionKey.current !== sessionKey) {
+      restoredSessionKey.current = null;
+      refreshedLoggedOutSessionKey.current = sessionKey;
+      setRefreshingLoggedOut(true);
+      let nextOfflineMode = false;
+      getActiveCloudOwnerIdAsync()
+        .then(ownerId => (ownerId ? clearCloudUserLocalDataAsync() : undefined))
+        .then(() => isOfflineModeAsync())
+        .then(isOffline => {
+          nextOfflineMode = isOffline;
+          setOfflineMode(isOffline);
+          return Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
+        })
+        .catch(error => console.warn("Logged-out refresh failed", error))
+        .finally(() => {
+          setRefreshingLoggedOut(false);
+          router.replace(nextOfflineMode ? "/(tabs)" : "/intro");
+        });
+      return;
+    }
+
+    if (user) {
+      router.replace("/(tabs)");
+    } else if (offlineMode && profile) {
+      router.replace("/(tabs)");
+    } else {
+      router.replace("/intro");
+    }
+  }, [authLoading, error, isLoading, offlineMode, profile, refreshDebts, refreshProducts, refreshProfile, refreshSales, refreshingLoggedOut, restoring, router, sessionKey, user]);
+
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background, padding: 24 }}>
+      {error ? (
+        <Text style={{ color: colors.destructive, textAlign: "center" }}>{error.message}</Text>
+      ) : (
         <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  return null;
+      )}
+    </View>
+  );
 }

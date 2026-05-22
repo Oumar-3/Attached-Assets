@@ -1,63 +1,63 @@
 const colors = {
   light: {
-    text: "#0D1B2A",
-    tint: "#00A86B",
+    text: "#17211B",
+    tint: "#079669",
 
-    background: "#F5F7FA",
-    foreground: "#0D1B2A",
+    background: "#F7F8F5",
+    foreground: "#17211B",
 
     card: "#FFFFFF",
-    cardForeground: "#0D1B2A",
+    cardForeground: "#17211B",
 
-    primary: "#00A86B",
-    primaryDark: "#007A4D",
+    primary: "#079669",
+    primaryDark: "#12372A",
     primaryForeground: "#FFFFFF",
 
-    accent: "#F59E0B",
+    accent: "#B7791F",
     accentForeground: "#FFFFFF",
 
-    secondary: "#EEF9F4",
-    secondaryForeground: "#007A4D",
+    secondary: "#EAF7F0",
+    secondaryForeground: "#056449",
 
-    muted: "#F1F5F9",
-    mutedForeground: "#6B7280",
+    muted: "#EEF1EC",
+    mutedForeground: "#667066",
 
-    destructive: "#EF4444",
+    destructive: "#D94A4A",
     destructiveForeground: "#FFFFFF",
 
-    success: "#10B981",
-    warning: "#F59E0B",
-    info: "#3B82F6",
+    success: "#0E9F6E",
+    warning: "#C47B18",
+    info: "#2F6FAD",
 
-    border: "#E5E7EB",
-    input: "#E5E7EB",
+    border: "#E3E7DF",
+    input: "#E3E7DF",
 
     tabBar: "#FFFFFF",
-    tabBarBorder: "#F1F3F5",
+    tabBarBorder: "#E7EAE4",
   },
 
   dark: {
-    text: "#F0F4F8",
-    tint: "#00C87A",
+    text: "#F6F8F4",
+    tint: "#19B981",
 
-    background: "#0D1B2A",
-    foreground: "#F0F4F8",
+    background: "#0F1712",
+    foreground: "#F6F8F4",
 
-    card: "#162535",
-    cardForeground: "#F0F4F8",
+    card: "#162019",
+    cardForeground: "#F6F8F4",
 
-    primary: "#00C87A",
-    primaryDark: "#00A86B",
-    primaryForeground: "#0D1B2A",
+    primary: "#19B981",
+    primaryDark: "#0D6E50",
+    primaryForeground: "#07110D",
 
     accent: "#F59E0B",
     accentForeground: "#0D1B2A",
 
-    secondary: "#1A3448",
-    secondaryForeground: "#00C87A",
+    secondary: "#173326",
+    secondaryForeground: "#82E3BA",
 
-    muted: "#1E3448",
-    mutedForeground: "#8B9DB0",
+    muted: "#1D2921",
+    mutedForeground: "#AAB3A8",
 
     destructive: "#EF4444",
     destructiveForeground: "#FFFFFF",
@@ -66,11 +66,11 @@ const colors = {
     warning: "#F59E0B",
     info: "#60A5FA",
 
-    border: "#1E3448",
-    input: "#1E3448",
+    border: "#26362C",
+    input: "#26362C",
 
-    tabBar: "#111E2D",
-    tabBarBorder: "#1E3448",
+    tabBar: "#101812",
+    tabBarBorder: "#243329",
   },
 
   radius: 16,

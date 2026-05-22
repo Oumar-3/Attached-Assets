@@ -1,24 +1,24 @@
 {
   "expo": {
-    "name": "BoutiqueApp",
-    "slug": "mobile",
+    "name": "SamaStock",
+    "slug": "samastock",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "icon": "./assets/images/logo1.png",
+    "scheme": "samastock",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "cover",
-      "backgroundColor": "#00A86B"
+      "image": "./assets/images/logo1.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F8F5"
     },
     "ios": {
       "supportsTablet": false
     },
     "android": {},
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/logo1.png"
     },
     "plugins": [
       [
@@ -28,10 +28,11 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-sqlite"
     ],
     "experiments": {
-      "typedRoutes": true,
+      "typedRoutes": false,
       "reactCompiler": true
     }
   }
