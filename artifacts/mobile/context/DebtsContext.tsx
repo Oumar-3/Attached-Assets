@@ -14,9 +14,11 @@ import {
   listPaidDebtsAsync,
   listPaymentsForClientAsync,
   listPaymentsForDebtAsync,
+  updateDebtAsync,
   type ClientInput,
   type DebtPaymentStats,
   type DebtInput,
+  type DebtUpdateInput,
 } from "@/database";
 import { useDatabase } from "@/context/DatabaseContext";
 import type { ClientRecord, DebtPaymentRecord, DebtPaymentWithDebt, DebtWithClient } from "@/models";
@@ -36,6 +38,7 @@ type DebtsContextType = {
   createClient: (input: ClientInput) => Promise<ClientRecord>;
   createDebt: (input: DebtInput) => Promise<DebtWithClient>;
   createDebtForClient: (client: ClientInput, amount: number, description?: string, saleId?: string) => Promise<DebtWithClient>;
+  updateDebt: (debtId: string, input: DebtUpdateInput) => Promise<DebtWithClient>;
   addPayment: (debtId: string, amount: number, note?: string) => Promise<DebtWithClient>;
   listPayments: (debtId: string) => Promise<DebtPaymentRecord[]>;
 };
@@ -110,6 +113,13 @@ export function DebtsProvider({ children }: { children: React.ReactNode }) {
     return debt;
   }, [refreshDebts]);
 
+  const updateDebt = useCallback(async (debtId: string, input: DebtUpdateInput) => {
+    const debt = await updateDebtAsync(debtId, input);
+    await refreshDebts();
+    scheduleCloudBackup();
+    return debt;
+  }, [refreshDebts]);
+
   const value = useMemo(
     () => ({
       clients,
@@ -125,10 +135,11 @@ export function DebtsProvider({ children }: { children: React.ReactNode }) {
       createClient,
       createDebt,
       createDebtForClient,
+      updateDebt,
       addPayment,
       listPayments: listPaymentsForDebtAsync,
     }),
-    [addPayment, clients, createClient, createDebt, createDebtForClient, isLoading, isReady, openDebts, paidDebts, refreshDebts, todayPaymentStats, totalOpenDebt],
+    [addPayment, clients, createClient, createDebt, createDebtForClient, isLoading, isReady, openDebts, paidDebts, refreshDebts, todayPaymentStats, totalOpenDebt, updateDebt],
   );
 
   return <DebtsContext.Provider value={value}>{children}</DebtsContext.Provider>;

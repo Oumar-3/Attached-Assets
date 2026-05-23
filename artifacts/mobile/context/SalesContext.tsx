@@ -3,12 +3,17 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import {
   createCashSaleAsync,
   createCreditSaleAsync,
+  countSalesPageAsync,
+  getSalesSummaryAsync,
   getSaleByIdAsync,
   hideSaleFromHistoryAsync,
   listRecentSalesAsync,
+  listSalesPageAsync,
   listSaleItemsAsync,
   type CartSaleItemInput,
   type CreditSaleInput,
+  type SalesPageOptions,
+  type SalesSummary,
 } from "@/database";
 import { useDebts } from "@/context/DebtsContext";
 import type { SaleItemRecord, SaleRecord } from "@/models";
@@ -20,6 +25,9 @@ type SalesContextType = {
   sales: SaleRecord[];
   isLoading: boolean;
   refreshSales: () => Promise<void>;
+  listSalesPage: (options?: SalesPageOptions) => Promise<SaleRecord[]>;
+  countSalesPage: (search?: string) => Promise<number>;
+  getSalesSummary: () => Promise<SalesSummary>;
   getSale: (id: string) => Promise<SaleRecord | null>;
   listSaleItems: (saleId: string) => Promise<SaleItemRecord[]>;
   createCashSale: (items: CartSaleItemInput[]) => Promise<SaleRecord>;
@@ -77,6 +85,9 @@ export function SalesProvider({ children }: { children: React.ReactNode }) {
       sales,
       isLoading: !isReady || isLoading,
       refreshSales,
+      listSalesPage: listSalesPageAsync,
+      countSalesPage: countSalesPageAsync,
+      getSalesSummary: getSalesSummaryAsync,
       getSale: getSaleByIdAsync,
       listSaleItems: listSaleItemsAsync,
       createCashSale,

@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 6;
 
 const MIGRATION_1 = `
 CREATE TABLE IF NOT EXISTS shop_profile (
@@ -243,6 +243,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_products_shop_barcode_unique
   WHERE barcode IS NOT NULL AND barcode != '' AND shop_id IS NOT NULL;
 `;
 
+const MIGRATION_5 = `
+CREATE INDEX IF NOT EXISTS idx_products_shop_updated ON products(shop_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_products_shop_archived_name ON products(shop_id, is_archived, name);
+CREATE INDEX IF NOT EXISTS idx_products_shop_barcode ON products(shop_id, barcode);
+
+CREATE INDEX IF NOT EXISTS idx_clients_shop_name_phone ON clients(shop_id, name, phone);
+
+CREATE INDEX IF NOT EXISTS idx_sales_shop_deleted_created ON sales(shop_id, deleted_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_sales_shop_receipt ON sales(shop_id, receipt_number);
+CREATE INDEX IF NOT EXISTS idx_sales_shop_payment_created ON sales(shop_id, payment_type, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_sale_items_shop_sale ON sale_items(shop_id, sale_id);
+CREATE INDEX IF NOT EXISTS idx_sale_items_shop_product ON sale_items(shop_id, product_id);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_shop_created ON stock_movements(shop_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_shop_product_created ON stock_movements(shop_id, product_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_debts_shop_status_updated ON debts(shop_id, status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_debts_shop_client ON debts(shop_id, client_id);
+
+CREATE INDEX IF NOT EXISTS idx_debt_payments_shop_created ON debt_payments(shop_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_debt_payments_shop_debt_created ON debt_payments(shop_id, debt_id, created_at);
+`;
+
+const MIGRATION_6 = `
+CREATE TABLE IF NOT EXISTS sync_state (
+  table_name TEXT PRIMARY KEY NOT NULL,
+  last_pulled_at TEXT,
+  updated_at TEXT NOT NULL
+);
+`;
+
 export async function runMigrationsAsync(db: SQLiteDatabase) {
   const versionRow = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   const currentVersion = versionRow?.user_version ?? 0;
@@ -272,6 +304,20 @@ export async function runMigrationsAsync(db: SQLiteDatabase) {
     await db.withTransactionAsync(async () => {
       await db.execAsync(MIGRATION_4);
       await db.execAsync("PRAGMA user_version = 4;");
+    });
+  }
+
+  if (currentVersion < 5) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(MIGRATION_5);
+      await db.execAsync("PRAGMA user_version = 5;");
+    });
+  }
+
+  if (currentVersion < 6) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(MIGRATION_6);
+      await db.execAsync("PRAGMA user_version = 6;");
     });
   }
 

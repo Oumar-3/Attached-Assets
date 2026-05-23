@@ -1,6 +1,6 @@
 import { getDatabaseAsync } from "@/database/client";
 import { getSupabaseClient } from "@/services/supabase/client";
-import type { SyncResult, SyncableTable } from "./types";
+import type { SyncCheckpoint, SyncResult, SyncableTable } from "./types";
 
 type LocalShopProfileRow = {
   id: string;
@@ -197,6 +197,8 @@ const BASIC_TABLES: BasicSyncTable[] = [
   "debt_payments",
 ];
 
+const PULL_PAGE_SIZE = 500;
+
 function getSupabaseErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object") {
@@ -218,6 +220,68 @@ function emptyResult(table: SyncableTable, direction: "push" | "pull"): SyncResu
 
 function getRemoteShopProfileId(ownerId: string) {
   return `${ownerId}:main`;
+}
+
+function withRemotePushTimestamp<T extends { updated_at?: string | null }>(rows: T[]) {
+  const now = new Date().toISOString();
+  return rows.map(row => ({ ...row, updated_at: now }));
+}
+
+async function getLastPulledAt(table: BasicSyncTable) {
+  const db = await getDatabaseAsync();
+  const row = await db.getFirstAsync<SyncCheckpoint>(
+    "SELECT table_name as syncTable, last_pulled_at as lastPulledAt FROM sync_state WHERE table_name = ?",
+    table,
+  );
+  return row?.lastPulledAt ?? null;
+}
+
+function maxUpdatedAt(rows: Array<{ updated_at?: string | null; created_at?: string | null }>) {
+  return rows.reduce<string | null>((max, row) => {
+    const value = row.updated_at ?? row.created_at ?? null;
+    if (!value) return max;
+    return !max || value > max ? value : max;
+  }, null);
+}
+
+async function saveLastPulledAt(table: BasicSyncTable, rows: Array<{ updated_at?: string | null; created_at?: string | null }>) {
+  const nextCheckpoint = maxUpdatedAt(rows);
+  if (!nextCheckpoint) return;
+
+  const db = await getDatabaseAsync();
+  await db.runAsync(
+    `INSERT INTO sync_state (table_name, last_pulled_at, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(table_name) DO UPDATE SET
+       last_pulled_at = excluded.last_pulled_at,
+       updated_at = excluded.updated_at`,
+    table,
+    nextCheckpoint,
+    new Date().toISOString(),
+  );
+}
+
+async function fetchRemoteChanges<T extends { updated_at?: string | null; created_at?: string | null }>(
+  localTable: BasicSyncTable,
+  remoteTable: string,
+  ownerId: string,
+) {
+  const supabase = getSupabaseClient();
+  const lastPulledAt = await getLastPulledAt(localTable);
+  let query = supabase
+    .from(remoteTable)
+    .select("*")
+    .eq("owner_id", ownerId)
+    .order("updated_at", { ascending: true })
+    .limit(PULL_PAGE_SIZE);
+
+  if (lastPulledAt) {
+    query = query.gt("updated_at", lastPulledAt);
+  }
+
+  const { data, error } = await query;
+  if (error) throwSupabaseError(error);
+  return (data ?? []) as T[];
 }
 
 async function getOwnerId() {
@@ -449,7 +513,7 @@ async function pushShops(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("shops").upsert(rows.map(row => toRemoteShop(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("shops").upsert(withRemotePushTimestamp(rows.map(row => toRemoteShop(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -466,7 +530,7 @@ async function pushShopProfile(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("shop_profiles").upsert(rows.map(row => toRemoteShopProfile(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("shop_profiles").upsert(withRemotePushTimestamp(rows.map(row => toRemoteShopProfile(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -486,7 +550,7 @@ async function pushClients(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("clients").upsert(rows.map(row => toRemoteClient(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("clients").upsert(withRemotePushTimestamp(rows.map(row => toRemoteClient(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -503,7 +567,7 @@ async function pushProducts(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("products").upsert(rows.map(row => toRemoteProduct(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("products").upsert(withRemotePushTimestamp(rows.map(row => toRemoteProduct(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -520,7 +584,7 @@ async function pushSales(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("sales").upsert(rows.map(row => toRemoteSale(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("sales").upsert(withRemotePushTimestamp(rows.map(row => toRemoteSale(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -537,7 +601,7 @@ async function pushSaleItems(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("sale_items").upsert(rows.map(row => toRemoteSaleItem(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("sale_items").upsert(withRemotePushTimestamp(rows.map(row => toRemoteSaleItem(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -554,7 +618,7 @@ async function pushStockMovements(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("stock_movements").upsert(rows.map(row => toRemoteStockMovement(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("stock_movements").upsert(withRemotePushTimestamp(rows.map(row => toRemoteStockMovement(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -571,7 +635,7 @@ async function pushDebts(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("debts").upsert(rows.map(row => toRemoteDebt(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("debts").upsert(withRemotePushTimestamp(rows.map(row => toRemoteDebt(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -588,7 +652,7 @@ async function pushDebtPayments(ownerId: string): Promise<SyncResult> {
   if (rows.length === 0) return result;
 
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("debt_payments").upsert(rows.map(row => toRemoteDebtPayment(row, ownerId)), { onConflict: "id" });
+  const { error } = await supabase.from("debt_payments").upsert(withRemotePushTimestamp(rows.map(row => toRemoteDebtPayment(row, ownerId))), { onConflict: "id" });
   if (error) {
     result.failed = rows.length;
     throwSupabaseError(error);
@@ -607,12 +671,10 @@ async function getLocalSyncStatus(table: BasicSyncTable, id: string) {
 
 async function pullShops(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("shops", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("shops").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteShopRow>("shops", "shops", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteShopRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("shops", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -647,17 +709,16 @@ async function pullShops(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("shops", data);
   return result;
 }
 
 async function pullShopProfiles(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("shop_profile", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("shop_profiles").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteShopProfileRow>("shop_profile", "shop_profiles", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteShopProfileRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("shop_profile", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -694,17 +755,16 @@ async function pullShopProfiles(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("shop_profile", data);
   return result;
 }
 
 async function pullClients(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("clients", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("clients").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteClientRow>("clients", "clients", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteClientRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("clients", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -737,17 +797,16 @@ async function pullClients(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("clients", data);
   return result;
 }
 
 async function pullProducts(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("products", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("products").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteProductRow>("products", "products", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteProductRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("products", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -802,17 +861,16 @@ async function pullProducts(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("products", data);
   return result;
 }
 
 async function pullSales(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("sales", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("sales").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteSaleRow>("sales", "sales", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteSaleRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("sales", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -850,17 +908,16 @@ async function pullSales(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("sales", data);
   return result;
 }
 
 async function pullSaleItems(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("sale_items", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("sale_items").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteSaleItemRow>("sale_items", "sale_items", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteSaleItemRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("sale_items", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -902,17 +959,16 @@ async function pullSaleItems(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("sale_items", data);
   return result;
 }
 
 async function pullStockMovements(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("stock_movements", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("stock_movements").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteStockMovementRow>("stock_movements", "stock_movements", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteStockMovementRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("stock_movements", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -952,17 +1008,16 @@ async function pullStockMovements(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("stock_movements", data);
   return result;
 }
 
 async function pullDebts(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("debts", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("debts").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteDebtRow>("debts", "debts", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteDebtRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("debts", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -1004,17 +1059,16 @@ async function pullDebts(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("debts", data);
   return result;
 }
 
 async function pullDebtPayments(ownerId: string): Promise<SyncResult> {
   const result = emptyResult("debt_payments", "pull");
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from("debt_payments").select("*").eq("owner_id", ownerId);
-  if (error) throwSupabaseError(error);
+  const data = await fetchRemoteChanges<RemoteDebtPaymentRow>("debt_payments", "debt_payments", ownerId);
 
   const db = await getDatabaseAsync();
-  for (const row of (data ?? []) as RemoteDebtPaymentRow[]) {
+  for (const row of data) {
     const localStatus = await getLocalSyncStatus("debt_payments", row.id);
     if (localStatus === "pending" || localStatus === "conflict") {
       result.conflicts += 1;
@@ -1048,6 +1102,7 @@ async function pullDebtPayments(ownerId: string): Promise<SyncResult> {
     );
     result.pulled += 1;
   }
+  if (result.conflicts === 0) await saveLastPulledAt("debt_payments", data);
   return result;
 }
 

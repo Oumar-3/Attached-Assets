@@ -15,6 +15,13 @@ export type DebtInput = {
   saleId?: string;
 };
 
+export type DebtUpdateInput = {
+  clientName: string;
+  clientPhone?: string;
+  amount: number;
+  description?: string;
+};
+
 type ClientRow = {
   id: string;
   name: string;
@@ -302,6 +309,58 @@ export async function addDebtPaymentAsync(debtId: string, amount: number, note?:
        WHERE id = ? AND shop_id = ?`,
       nextPaid,
       nextStatus,
+      now,
+      debtId,
+      shopId,
+    );
+  });
+
+  const updated = await getDebtByIdAsync(debtId);
+  if (!updated) throw new Error("Dette introuvable");
+  return updated;
+}
+
+export async function updateDebtAsync(debtId: string, input: DebtUpdateInput) {
+  const db = await getDatabaseAsync();
+  const shopId = await requireActiveShopIdAsync();
+  const debt = await getDebtByIdAsync(debtId);
+  if (!debt) throw new Error("Dette introuvable");
+  if (debt.status === "paid") {
+    throw new Error("Une dette deja reglee ne peut plus etre modifiee.");
+  }
+
+  const clientName = input.clientName.trim();
+  if (!clientName) throw new Error("Nom client requis");
+
+  const nextAmount = Math.max(0, input.amount);
+  if (nextAmount <= 0) throw new Error("Montant invalide");
+  if (nextAmount < debt.paidAmount) {
+    throw new Error("Le montant ne peut pas etre inferieur au total deja rembourse.");
+  }
+
+  const now = new Date().toISOString();
+  const nextStatus = debt.paidAmount >= nextAmount ? "paid" : "open";
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE clients
+       SET name = ?, phone = ?, updated_at = ?, sync_status = 'pending', last_synced_at = NULL
+       WHERE id = ? AND shop_id = ?`,
+      clientName,
+      nullableText(input.clientPhone),
+      now,
+      debt.clientId,
+      shopId,
+    );
+
+    await db.runAsync(
+      `UPDATE debts
+       SET amount = ?, status = ?, description = ?, updated_at = ?,
+           sync_status = 'pending', last_synced_at = NULL
+       WHERE id = ? AND shop_id = ?`,
+      nextAmount,
+      nextStatus,
+      nullableText(input.description),
       now,
       debtId,
       shopId,

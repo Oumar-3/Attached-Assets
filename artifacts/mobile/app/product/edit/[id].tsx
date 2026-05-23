@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import { Directory, File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -21,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProducts } from "@/context/ProductsContext";
 import { useColors } from "@/hooks/useColors";
 import type { ProductRecord } from "@/models";
+import { deleteProductImageAsync, PRODUCT_IMAGE_PICKER_OPTIONS, saveProductImageAsync } from "@/utils/productImages";
 
 const CATEGORIES = ["Boisson", "Alimentaire", "Menager", "Hygiene", "Textile", "Electronique", "Autre"];
 
@@ -112,25 +112,15 @@ export default function EditProductScreen() {
     };
   }, [getProduct, id]);
 
-  async function copyImageToApp(uri: string) {
-    const dir = new Directory(Paths.document, "product-images");
-    dir.create({ intermediates: true, idempotent: true });
-    const cleanUri = uri.split("?")[0];
-    const extension = cleanUri.includes(".") ? cleanUri.split(".").pop() : "jpg";
-    const destination = new File(dir, `${Date.now()}.${extension || "jpg"}`);
-    new File(uri).copy(destination);
-    return destination.uri;
-  }
-
   async function pickImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.72,
-      allowsEditing: true,
-      aspect: [1, 1],
+      ...PRODUCT_IMAGE_PICKER_OPTIONS,
     });
     if (!result.canceled) {
-      setImageUri(await copyImageToApp(result.assets[0].uri));
+      const nextUri = await saveProductImageAsync(result.assets[0].uri);
+      await deleteProductImageAsync(imageUri);
+      setImageUri(nextUri);
     }
   }
 
@@ -141,12 +131,12 @@ export default function EditProductScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.72,
-      allowsEditing: true,
-      aspect: [1, 1],
+      ...PRODUCT_IMAGE_PICKER_OPTIONS,
     });
     if (!result.canceled) {
-      setImageUri(await copyImageToApp(result.assets[0].uri));
+      const nextUri = await saveProductImageAsync(result.assets[0].uri);
+      await deleteProductImageAsync(imageUri);
+      setImageUri(nextUri);
     }
   }
 
@@ -258,7 +248,13 @@ export default function EditProductScreen() {
                   <Text style={[styles.photoBtnText, { color: colors.primary }]}>Galerie</Text>
                 </TouchableOpacity>
                 {imageUri ? (
-                  <TouchableOpacity style={[styles.photoBtn, { borderColor: colors.border }]} onPress={() => setImageUri("")}>
+                  <TouchableOpacity
+                    style={[styles.photoBtn, { borderColor: colors.border }]}
+                    onPress={async () => {
+                      await deleteProductImageAsync(imageUri);
+                      setImageUri("");
+                    }}
+                  >
                     <Feather name="trash-2" size={16} color={colors.destructive} />
                     <Text style={[styles.photoBtnText, { color: colors.destructive }]}>Retirer</Text>
                   </TouchableOpacity>

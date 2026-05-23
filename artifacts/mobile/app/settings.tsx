@@ -22,6 +22,8 @@ import { useProducts } from "@/context/ProductsContext";
 import { useSales } from "@/context/SalesContext";
 import { useShopProfile } from "@/context/ShopProfileContext";
 import { useColors } from "@/hooks/useColors";
+import { getBackupOverviewAsync, type BackupOverview } from "@/services/sync/backupStatus";
+import { syncBasicTablesAsync } from "@/services/sync/basicSync";
 
 type FieldName = "shopName" | "ownerName" | "phone" | "address";
 
@@ -54,6 +56,9 @@ export default function SettingsScreen() {
     address: "",
   });
   const [saving, setSaving] = useState(false);
+  const [backupOverview, setBackupOverview] = useState<BackupOverview>({ pendingCount: 0, lastBackupAt: null });
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -68,6 +73,19 @@ export default function SettingsScreen() {
       });
     }
   }, [profile]);
+
+  useEffect(() => {
+    void loadBackupOverview();
+  }, [user]);
+
+  async function loadBackupOverview() {
+    setBackupLoading(true);
+    try {
+      setBackupOverview(await getBackupOverviewAsync());
+    } finally {
+      setBackupLoading(false);
+    }
+  }
 
   function updateField(name: FieldName, value: string) {
     setForm(prev => ({ ...prev, [name]: value }));
@@ -86,6 +104,7 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       await saveProfile(form);
+      await loadBackupOverview();
       Alert.alert("Profil enregistre", "Les informations de la boutique ont ete mises a jour.");
     } catch (err) {
       Alert.alert("Erreur", err instanceof Error ? err.message : "Impossible d'enregistrer le profil.");
@@ -102,6 +121,54 @@ export default function SettingsScreen() {
       Alert.alert("Erreur", err instanceof Error ? err.message : "Impossible de se deconnecter.");
     }
   }
+
+  async function handleBackupNow() {
+    if (!user) {
+      router.push("/(auth)/login");
+      return;
+    }
+
+    setBackupBusy(true);
+    try {
+      const results = await syncBasicTablesAsync();
+      await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
+      await loadBackupOverview();
+
+      const sent = results.reduce((total, result) => total + result.pushed, 0);
+      const received = results.reduce((total, result) => total + result.pulled, 0);
+      Alert.alert(
+        "Sauvegarde terminee",
+        sent + received > 0 ? `Envoyes: ${sent} • Recuperes: ${received}` : "Tout est deja a jour.",
+      );
+    } catch (err) {
+      Alert.alert("Sauvegarde impossible", err instanceof Error ? err.message : "Reessayez dans quelques instants.");
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  function formatBackupDate(value: string | null) {
+    if (!value) return "Jamais";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Jamais";
+    return date.toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  const backupTitle = !user
+    ? "Sauvegarde locale"
+    : backupOverview.pendingCount > 0
+      ? "Sauvegarde en attente"
+      : "Sauvegarde a jour";
+  const backupSubtitle = !user
+    ? "Vos donnees restent sur ce telephone."
+    : backupOverview.pendingCount > 0
+      ? `${backupOverview.pendingCount} changement${backupOverview.pendingCount > 1 ? "s" : ""} a sauvegarder.`
+      : `Derniere sauvegarde : ${formatBackupDate(backupOverview.lastBackupAt)}`;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -126,7 +193,7 @@ export default function SettingsScreen() {
             <View style={styles.brandText}>
               <Text style={[styles.brandName, { color: colors.text }]}>SamaStock</Text>
               <Text style={[styles.brandSubtitle, { color: colors.mutedForeground }]}>
-                {user ? "Compte connecte et sauvegarde automatique" : "Mode local sur ce telephone"}
+                {user ? "Vos donnees sont protegees avec votre compte" : "Vos donnees restent sur ce telephone"}
               </Text>
             </View>
           </View>
@@ -170,6 +237,45 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Sauvegarde</Text>
+            <View style={[styles.cloudCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.cloudHeader}>
+                <View style={[styles.cloudIcon, { backgroundColor: user ? colors.primary + "16" : colors.warning + "16" }]}>
+                  <Feather name={user ? "cloud" : "smartphone"} size={20} color={user ? colors.primary : colors.warning} />
+                </View>
+                <View style={styles.cloudText}>
+                  <Text style={[styles.cloudTitle, { color: colors.text }]}>{backupTitle}</Text>
+                  <Text style={[styles.cloudSubtitle, { color: colors.mutedForeground }]} numberOfLines={2}>
+                    {backupLoading ? "Verification en cours..." : backupSubtitle}
+                  </Text>
+                </View>
+              </View>
+
+              {user ? (
+                <View style={[styles.notice, { backgroundColor: colors.success + "12", borderColor: colors.success + "25" }]}>
+                  <Feather name="check-circle" size={16} color={colors.success} />
+                  <Text style={[styles.noticeText, { color: colors.success }]}>Sauvegarde automatique active.</Text>
+                </View>
+              ) : (
+                <View style={[styles.notice, { backgroundColor: colors.warning + "12", borderColor: colors.warning + "25" }]}>
+                  <Feather name="info" size={16} color={colors.warning} />
+                  <Text style={[styles.noticeText, { color: colors.warning }]}>Connectez un compte pour retrouver vos donnees plus tard.</Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.cloudBtn, { backgroundColor: user ? colors.primary : colors.text }, (backupBusy || backupLoading) && { opacity: 0.7 }]}
+                onPress={handleBackupNow}
+                disabled={backupBusy || backupLoading}
+                activeOpacity={0.85}
+              >
+                {backupBusy ? <ActivityIndicator color="#fff" /> : <Feather name={user ? "upload-cloud" : "log-in"} size={18} color="#fff" />}
+                {!backupBusy && <Text style={styles.cloudBtnText}>{user ? "Sauvegarder maintenant" : "Se connecter"}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Compte</Text>
             <View style={[styles.cloudCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cloudHeader}>
@@ -187,13 +293,6 @@ export default function SettingsScreen() {
               </View>
 
               {user ? (
-                <View style={[styles.notice, { backgroundColor: colors.success + "12", borderColor: colors.success + "25" }]}>
-                  <Feather name="check-circle" size={16} color={colors.success} />
-                  <Text style={[styles.noticeText, { color: colors.success }]}>Sauvegarde automatique active.</Text>
-                </View>
-              ) : null}
-
-              {user ? (
                 <TouchableOpacity
                   style={[styles.logoutBtn, { borderColor: colors.destructive + "45", backgroundColor: colors.destructive + "10" }]}
                   onPress={handleLogout}
@@ -207,7 +306,7 @@ export default function SettingsScreen() {
               {!isConfigured ? (
                 <View style={[styles.notice, { backgroundColor: colors.destructive + "12", borderColor: colors.destructive + "25" }]}>
                   <Feather name="alert-circle" size={16} color={colors.destructive} />
-                  <Text style={[styles.noticeText, { color: colors.destructive }]}>La sauvegarde en ligne n'est pas disponible sur cette installation.</Text>
+                  <Text style={[styles.noticeText, { color: colors.destructive }]}>La connexion n'est pas disponible sur cette installation.</Text>
                 </View>
               ) : null}
 
@@ -240,7 +339,7 @@ export default function SettingsScreen() {
             <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <InfoRow label="Devise" value="FCFA" />
               <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
-              <InfoRow label="Stockage" value={user ? "Local + sauvegarde compte" : "Local"} />
+              <InfoRow label="Stockage" value={user ? "Telephone + compte" : "Telephone"} />
               <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
               <InfoRow label="Version" value="1.0.0" />
             </View>

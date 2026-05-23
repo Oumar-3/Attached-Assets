@@ -38,6 +38,7 @@ export async function clearAllLocalDataAsync() {
       DELETE FROM products;
       DELETE FROM shop_profile;
       DELETE FROM shops;
+      DELETE FROM sync_state;
       PRAGMA foreign_keys = ON;
     `);
   })();

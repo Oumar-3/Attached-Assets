@@ -23,6 +23,6 @@ export type SyncResult = {
 };
 
 export type SyncCheckpoint = {
-  table: SyncableTable;
+  syncTable: SyncableTable;
   lastPulledAt: string | null;
 };

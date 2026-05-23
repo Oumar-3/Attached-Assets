@@ -101,12 +101,13 @@ export default function DebtsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { openDebts, paidDebts, totalOpenDebt, isLoading, createDebtForClient, addPayment, listPayments } = useDebts();
+  const { openDebts, paidDebts, totalOpenDebt, isLoading, createDebtForClient, updateDebt, addPayment, listPayments } = useDebts();
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<"open" | "paid">("open");
   const [showAdd, setShowAdd] = useState(false);
   const [payingDebt, setPayingDebt] = useState<DebtWithClient | null>(null);
   const [selectedDebt, setSelectedDebt] = useState<DebtWithClient | null>(null);
+  const [editingDebt, setEditingDebt] = useState<DebtWithClient | null>(null);
   const [selectedPayments, setSelectedPayments] = useState<DebtPaymentRecord[]>([]);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -114,6 +115,10 @@ export default function DebtsScreen() {
   const [description, setDescription] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
+  const [editClientName, setEditClientName] = useState("");
+  const [editClientPhone, setEditClientPhone] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [busy, setBusy] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -141,6 +146,19 @@ export default function DebtsScreen() {
     } catch {
       setSelectedPayments([]);
     }
+  }
+
+  function openEditDebt(debt: DebtWithClient) {
+    if (debt.status === "paid") {
+      Alert.alert("Dette reglee", "Cette dette est conservee comme preuve et ne peut plus etre modifiee.");
+      return;
+    }
+    setSelectedDebt(null);
+    setEditingDebt(debt);
+    setEditClientName(debt.clientName);
+    setEditClientPhone(debt.clientPhone ?? "");
+    setEditAmount(`${debt.amount}`);
+    setEditDescription(debt.description ?? "");
   }
 
   async function handleAddDebt() {
@@ -185,6 +203,43 @@ export default function DebtsScreen() {
       setPayingDebt(null);
     } catch (err) {
       Alert.alert("Remboursement impossible", err instanceof Error ? err.message : "Une erreur est survenue.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleUpdateDebt() {
+    if (!editingDebt) return;
+    if (editingDebt.status === "paid") {
+      Alert.alert("Dette reglee", "Cette dette ne peut plus etre modifiee.");
+      setEditingDebt(null);
+      return;
+    }
+    const parsedAmount = parseFloat(editAmount);
+    if (!editClientName.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      Alert.alert("Dette incomplete", "Renseignez le client et un montant valide.");
+      return;
+    }
+    if (parsedAmount < editingDebt.paidAmount) {
+      Alert.alert("Montant impossible", "Le montant ne peut pas etre inferieur au total deja rembourse.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await updateDebt(editingDebt.id, {
+        clientName: editClientName.trim(),
+        clientPhone: editClientPhone.trim() || undefined,
+        amount: parsedAmount,
+        description: editDescription.trim() || undefined,
+      });
+      setEditingDebt(null);
+      setEditClientName("");
+      setEditClientPhone("");
+      setEditAmount("");
+      setEditDescription("");
+    } catch (err) {
+      Alert.alert("Modification impossible", err instanceof Error ? err.message : "Une erreur est survenue.");
     } finally {
       setBusy(false);
     }
@@ -336,9 +391,16 @@ export default function DebtsScreen() {
               <Text style={[styles.modalTitle, { color: colors.text }]}>Detail dette</Text>
               <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>Preuve, motif et paiements</Text>
             </View>
-            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setSelectedDebt(null)}>
-              <Feather name="x" size={22} color={colors.text} />
-            </TouchableOpacity>
+            <View style={styles.modalActions}>
+              {selectedDebt && selectedDebt.status !== "paid" ? (
+                <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.primary + "12" }]} onPress={() => openEditDebt(selectedDebt)}>
+                  <Feather name="edit-3" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setSelectedDebt(null)}>
+                <Feather name="x" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {selectedDebt ? (
@@ -398,6 +460,37 @@ export default function DebtsScreen() {
               </View>
             </ScrollView>
           ) : null}
+        </View>
+      </Modal>
+
+      <Modal visible={!!editingDebt} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditingDebt(null)}>
+        <View style={[styles.modal, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <View>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Modifier dette</Text>
+              <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>Corriger client, montant ou motif</Text>
+            </View>
+            <TouchableOpacity style={[styles.closeBtn, { backgroundColor: colors.muted }]} onPress={() => setEditingDebt(null)}>
+              <Feather name="x" size={22} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+            {editingDebt ? (
+              <View style={[styles.paymentSummary, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.clientName, { color: colors.text }]}>Deja rembourse: {money(editingDebt.paidAmount)}</Text>
+                <Text style={[styles.clientMeta, { color: colors.mutedForeground }]}>
+                  Le nouveau montant doit rester au moins egal a cette somme.
+                </Text>
+              </View>
+            ) : null}
+            <DebtInput colors={colors} icon="user" placeholder="Nom client" value={editClientName} onChangeText={setEditClientName} />
+            <DebtInput colors={colors} icon="phone" placeholder="Telephone" value={editClientPhone} onChangeText={setEditClientPhone} keyboardType="phone-pad" />
+            <DebtInput colors={colors} icon="credit-card" placeholder="Montant dette" value={editAmount} onChangeText={setEditAmount} keyboardType="numeric" />
+            <DebtInput colors={colors} icon="edit-3" placeholder="Description / sujet" value={editDescription} onChangeText={setEditDescription} />
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]} onPress={handleUpdateDebt} disabled={busy}>
+              <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -466,6 +559,7 @@ const styles = StyleSheet.create({
   payBtnText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
   modal: { flex: 1 },
   modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 18, borderBottomWidth: 1 },
+  modalActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700" },
   modalSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   closeBtn: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center" },

@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,22 +21,6 @@ function saleDate(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function searchableDate(value: string) {
-  const date = new Date(value);
-  return [
-    date.toLocaleDateString("fr-FR"),
-    date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }),
-    date.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }),
-    date.toISOString().slice(0, 10),
-  ].join(" ").toLowerCase();
-}
-
-function isToday(value: string) {
-  const date = new Date(value);
-  const now = new Date();
-  return date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
 }
 
 function SaleCard({ sale, onDelete }: { sale: SaleRecord; onDelete: () => void }) {
@@ -85,34 +69,51 @@ function SaleCard({ sale, onDelete }: { sale: SaleRecord; onDelete: () => void }
 export default function HistoryScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { sales, isLoading, refreshSales, hideSaleFromHistory } = useSales();
+  const { refreshSales, listSalesPage, countSalesPage, getSalesSummary, hideSaleFromHistory } = useSales();
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [pageSales, setPageSales] = useState<SaleRecord[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [summary, setSummary] = useState({ totalRevenue: 0, totalProfit: 0, todayCount: 0, creditCount: 0, visibleCount: 0 });
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+  const pageSize = 10;
 
-  const filteredSales = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return sales.slice(0, 10);
-    return sales.filter(sale => {
-      return [
-        sale.receiptNumber.toLowerCase(),
-        sale.paymentType,
-        searchableDate(sale.createdAt),
-      ].join(" ").includes(q);
-    });
-  }, [sales, search]);
+  const loadHistory = useCallback(async (mode: "replace" | "append" = "replace", offset = 0) => {
+    const nextOffset = mode === "append" ? offset : 0;
+    if (mode === "append") {
+      setLoadingMore(true);
+    } else {
+      setLoadingPage(true);
+    }
 
-  const totalRevenue = useMemo(() => sales.reduce((sum, sale) => sum + sale.total, 0), [sales]);
-  const totalProfit = useMemo(() => sales.reduce((sum, sale) => sum + sale.estimatedProfit, 0), [sales]);
-  const todayCount = useMemo(() => sales.filter(sale => isToday(sale.createdAt)).length, [sales]);
-  const creditCount = useMemo(() => sales.filter(sale => sale.paymentType === "credit").length, [sales]);
+    try {
+      const [nextSales, nextCount, nextSummary] = await Promise.all([
+        listSalesPage({ limit: pageSize, offset: nextOffset, search }),
+        countSalesPage(search),
+        getSalesSummary(),
+      ]);
+      setPageSales(prev => mode === "append" ? [...prev, ...nextSales] : nextSales);
+      setTotalCount(nextCount);
+      setSummary(nextSummary);
+    } finally {
+      setLoadingPage(false);
+      setLoadingMore(false);
+    }
+  }, [countSalesPage, getSalesSummary, listSalesPage, search]);
+
+  useEffect(() => {
+    loadHistory("replace");
+  }, [loadHistory]);
 
   async function onRefresh() {
     setRefreshing(true);
     try {
       await refreshSales();
+      await loadHistory("replace");
     } finally {
       setRefreshing(false);
     }
@@ -130,6 +131,7 @@ export default function HistoryScreen() {
           onPress: async () => {
             try {
               await hideSaleFromHistory(sale.id);
+              await loadHistory("replace");
             } catch (err) {
               Alert.alert("Suppression impossible", err instanceof Error ? err.message : "Une erreur est survenue.");
             }
@@ -152,22 +154,22 @@ export default function HistoryScreen() {
         <View style={styles.summaryRow}>
           <View style={[styles.summaryBox, { backgroundColor: colors.primary + "12" }]}>
             <Text style={[styles.summaryLabel, { color: colors.primary }]}>Ventes</Text>
-            <Text style={[styles.summaryValue, { color: colors.primary }]}>{money(totalRevenue)}</Text>
+            <Text style={[styles.summaryValue, { color: colors.primary }]}>{money(summary.totalRevenue)}</Text>
           </View>
           <View style={[styles.summaryBox, { backgroundColor: colors.success + "12" }]}>
             <Text style={[styles.summaryLabel, { color: colors.success }]}>Benefice</Text>
-            <Text style={[styles.summaryValue, { color: totalProfit >= 0 ? colors.success : colors.destructive }]}>{money(totalProfit)}</Text>
+            <Text style={[styles.summaryValue, { color: summary.totalProfit >= 0 ? colors.success : colors.destructive }]}>{money(summary.totalProfit)}</Text>
           </View>
         </View>
 
         <View style={styles.statsRow}>
           <View style={[styles.statPill, { backgroundColor: colors.info + "12" }]}>
             <Feather name="calendar" size={14} color={colors.info} />
-            <Text style={[styles.statPillText, { color: colors.info }]}>{todayCount} aujourd'hui</Text>
+            <Text style={[styles.statPillText, { color: colors.info }]}>{summary.todayCount} aujourd'hui</Text>
           </View>
           <View style={[styles.statPill, { backgroundColor: colors.warning + "12" }]}>
             <Feather name="credit-card" size={14} color={colors.warning} />
-            <Text style={[styles.statPillText, { color: colors.warning }]}>{creditCount} credit</Text>
+            <Text style={[styles.statPillText, { color: colors.warning }]}>{summary.creditCount} credit</Text>
           </View>
         </View>
 
@@ -196,21 +198,34 @@ export default function HistoryScreen() {
       >
         <View style={styles.resultRow}>
           <Text style={[styles.resultText, { color: colors.mutedForeground }]}>
-            {filteredSales.length} vente{filteredSales.length > 1 ? "s" : ""}
-            {!search.trim() && sales.length > 10 ? ` sur ${sales.length} recentes` : ""}
+            {pageSales.length} vente{pageSales.length > 1 ? "s" : ""}
+            {totalCount > pageSales.length ? ` sur ${totalCount}` : ""}
           </Text>
         </View>
 
-        {isLoading ? (
+        {loadingPage ? (
           <SkeletonCard count={5} />
-        ) : filteredSales.length === 0 ? (
+        ) : pageSales.length === 0 ? (
           <EmptyState
             icon="file-text"
             title="Aucune vente"
             subtitle={search ? "Aucun recu ne correspond a cette date ou ce numero" : "Les ventes validees apparaitront ici"}
           />
         ) : (
-          filteredSales.map(sale => <SaleCard key={sale.id} sale={sale} onDelete={() => confirmHideReceipt(sale)} />)
+          <>
+            {pageSales.map(sale => <SaleCard key={sale.id} sale={sale} onDelete={() => confirmHideReceipt(sale)} />)}
+            {pageSales.length < totalCount ? (
+              <TouchableOpacity
+                style={[styles.loadMoreBtn, { backgroundColor: colors.card, borderColor: colors.border }, loadingMore && { opacity: 0.65 }]}
+                onPress={() => loadHistory("append", pageSales.length)}
+                disabled={loadingMore}
+                activeOpacity={0.78}
+              >
+                <Feather name="chevron-down" size={17} color={colors.primary} />
+                <Text style={[styles.loadMoreText, { color: colors.primary }]}>{loadingMore ? "Chargement..." : "Voir plus"}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
         )}
       </ScrollView>
     </View>
@@ -260,4 +275,6 @@ const styles = StyleSheet.create({
   saleRightActions: { flexDirection: "row", alignItems: "center", gap: 6 },
   deleteBtn: { width: 30, height: 30, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   saleTotal: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  loadMoreBtn: { minHeight: 46, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  loadMoreText: { fontSize: 14, fontFamily: "Inter_700Bold", fontWeight: "700" },
 });

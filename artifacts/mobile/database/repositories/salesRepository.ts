@@ -15,6 +15,20 @@ export type CreditSaleInput = {
   description?: string;
 };
 
+export type SalesPageOptions = {
+  limit?: number;
+  offset?: number;
+  search?: string;
+};
+
+export type SalesSummary = {
+  totalRevenue: number;
+  totalProfit: number;
+  todayCount: number;
+  creditCount: number;
+  visibleCount: number;
+};
+
 type ProductSaleRow = {
   id: string;
   name: string;
@@ -32,6 +46,13 @@ type ClientSaleRow = {
 function nullableText(value?: string) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function localDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function createSaleAsync(
@@ -228,6 +249,98 @@ export async function listRecentSalesAsync(limit = 50) {
     shopId,
     limit,
   );
+}
+
+function buildSalesSearchClause(search?: string) {
+  const q = search?.trim().toLowerCase();
+  if (!q) {
+    return { clause: "", params: [] as string[] };
+  }
+
+  const like = `%${q}%`;
+  return {
+    clause: `
+      AND (
+        lower(receipt_number) LIKE ?
+        OR lower(payment_type) LIKE ?
+        OR date(created_at) LIKE ?
+        OR strftime('%d/%m/%Y', created_at) LIKE ?
+        OR strftime('%m/%Y', created_at) LIKE ?
+      )`,
+    params: [like, like, like, like, like],
+  };
+}
+
+export async function listSalesPageAsync(options: SalesPageOptions = {}) {
+  const db = await getDatabaseAsync();
+  const shopId = await requireActiveShopIdAsync();
+  const limit = Math.max(1, Math.min(options.limit ?? 10, 50));
+  const offset = Math.max(0, options.offset ?? 0);
+  const search = buildSalesSearchClause(options.search);
+
+  return db.getAllAsync<SaleRecord>(
+    `SELECT id, receipt_number as receiptNumber, total, estimated_profit as estimatedProfit,
+      payment_type as paymentType, client_id as clientId, created_at as createdAt
+     FROM sales
+     WHERE shop_id = ?
+       AND deleted_at IS NULL
+       ${search.clause}
+     ORDER BY created_at DESC
+     LIMIT ? OFFSET ?`,
+    shopId,
+    ...search.params,
+    limit,
+    offset,
+  );
+}
+
+export async function countSalesPageAsync(searchText?: string) {
+  const db = await getDatabaseAsync();
+  const shopId = await requireActiveShopIdAsync();
+  const search = buildSalesSearchClause(searchText);
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count
+     FROM sales
+     WHERE shop_id = ?
+       AND deleted_at IS NULL
+       ${search.clause}`,
+    shopId,
+    ...search.params,
+  );
+  return row?.count ?? 0;
+}
+
+export async function getSalesSummaryAsync(): Promise<SalesSummary> {
+  const db = await getDatabaseAsync();
+  const shopId = await requireActiveShopIdAsync();
+  const today = localDateKey(new Date());
+  const row = await db.getFirstAsync<{
+    totalRevenue: number | null;
+    totalProfit: number | null;
+    todayCount: number | null;
+    creditCount: number | null;
+    visibleCount: number | null;
+  }>(
+    `SELECT
+       COALESCE(SUM(total), 0) as totalRevenue,
+       COALESCE(SUM(estimated_profit), 0) as totalProfit,
+       COALESCE(SUM(CASE WHEN date(created_at) = ? THEN 1 ELSE 0 END), 0) as todayCount,
+       COALESCE(SUM(CASE WHEN payment_type = 'credit' THEN 1 ELSE 0 END), 0) as creditCount,
+       COUNT(*) as visibleCount
+     FROM sales
+     WHERE shop_id = ?
+       AND deleted_at IS NULL`,
+    today,
+    shopId,
+  );
+
+  return {
+    totalRevenue: row?.totalRevenue ?? 0,
+    totalProfit: row?.totalProfit ?? 0,
+    todayCount: row?.todayCount ?? 0,
+    creditCount: row?.creditCount ?? 0,
+    visibleCount: row?.visibleCount ?? 0,
+  };
 }
 
 export async function getSaleByIdAsync(id: string) {
