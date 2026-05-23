@@ -29,7 +29,7 @@ export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const { refreshProfile, saveProfile } = useShopProfile();
   const { refreshProducts } = useProducts();
   const { refreshSales } = useSales();
@@ -45,6 +45,31 @@ export default function LoginScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+  async function completeCloudLogin(nextUser: Awaited<ReturnType<typeof login>>) {
+    await resetLocalDataForCloudUserAsync(nextUser.id);
+    await createLocalMainShopForCloudUserAsync(
+      nextUser.id,
+      nextUser.shopName || "Ma boutique",
+      nextUser.name || nextUser.email,
+    );
+    try {
+      await syncBasicTablesAsync();
+    } catch (syncError) {
+      console.warn("Login sync failed", syncError);
+    }
+    const existingProfile = await getShopProfileAsync();
+    if (!existingProfile) {
+      await saveProfile({
+        shopName: nextUser.shopName || "Ma boutique",
+        ownerName: nextUser.name || nextUser.email,
+        phone: "",
+        address: "",
+      });
+    }
+    await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
+    router.replace("/");
+  }
+
   async function handleLogin() {
     if (submittingRef.current) return;
     if (!email.trim() || !password) return setError("Remplissez tous les champs");
@@ -52,32 +77,24 @@ export default function LoginScreen() {
     setError("");
     setLoading(true);
     try {
-      const nextUser = await login(email, password);
-      await resetLocalDataForCloudUserAsync(nextUser.id);
-      await createLocalMainShopForCloudUserAsync(
-        nextUser.id,
-        nextUser.shopName || "Ma boutique",
-        nextUser.name || nextUser.email,
-      );
-      try {
-        await syncBasicTablesAsync();
-      } catch (syncError) {
-        console.warn("Login sync failed", syncError);
-        // Login should still succeed if the first sync is unavailable.
-      }
-      const existingProfile = await getShopProfileAsync();
-      if (!existingProfile) {
-        await saveProfile({
-          shopName: nextUser.shopName || "Ma boutique",
-          ownerName: nextUser.name || nextUser.email,
-          phone: "",
-          address: "",
-        });
-      }
-      await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
-      router.replace("/");
+      await completeCloudLogin(await login(email, password));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur de connexion");
+    } finally {
+      submittingRef.current = false;
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleLogin() {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setError("");
+    setLoading(true);
+    try {
+      await completeCloudLogin(await loginWithGoogle());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur de connexion Google");
     } finally {
       submittingRef.current = false;
       setLoading(false);
@@ -159,6 +176,16 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.googleBtn, { backgroundColor: colors.card, borderColor: colors.border }, loading && styles.btnDisabled]}
+            onPress={handleGoogleLogin}
+            disabled={loading}
+            activeOpacity={0.82}
+          >
+            <Feather name="chrome" size={18} color={colors.text} />
+            <Text style={[styles.googleBtnText, { color: colors.text }]}>Continuer avec Google</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.secondaryBtn, { borderColor: colors.border }]}
             onPress={() => router.push("/(auth)/register")}
             activeOpacity={0.75}
@@ -237,4 +264,14 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   secondaryBtnText: { fontSize: 15, fontWeight: "600", fontFamily: "Inter_600SemiBold" },
+  googleBtn: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  googleBtnText: { fontSize: 15, fontWeight: "700", fontFamily: "Inter_700Bold" },
 });

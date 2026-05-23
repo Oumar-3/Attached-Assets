@@ -1,5 +1,6 @@
 import { getDatabaseAsync } from "@/database/client";
 import type { LowStockSuggestion, ProductRecord, StockMovement, StockMovementType } from "@/models";
+import { getBarcodeCandidates } from "@/utils/barcode";
 import { createId } from "@/utils/id";
 import { requireActiveShopIdAsync } from "./shopRepository";
 
@@ -162,9 +163,12 @@ export async function getProductByIdAsync(id: string) {
 export async function findProductByBarcodeAsync(barcode: string) {
   const db = await getDatabaseAsync();
   const shopId = await requireActiveShopIdAsync();
+  const candidates = getBarcodeCandidates(barcode);
+  if (candidates.length === 0) return null;
+  const placeholders = candidates.map(() => "?").join(", ");
   const row = await db.getFirstAsync<ProductRow>(
-    "SELECT * FROM products WHERE barcode = ? AND shop_id = ? AND is_archived = 0",
-    barcode.trim(),
+    `SELECT * FROM products WHERE barcode IN (${placeholders}) AND shop_id = ? AND is_archived = 0`,
+    ...candidates,
     shopId,
   );
   return row ? mapProduct(row) : null;
@@ -173,9 +177,12 @@ export async function findProductByBarcodeAsync(barcode: string) {
 async function findProductByBarcodeOwnerAsync(barcode: string) {
   const db = await getDatabaseAsync();
   const shopId = await requireActiveShopIdAsync();
+  const candidates = getBarcodeCandidates(barcode);
+  if (candidates.length === 0) return null;
+  const placeholders = candidates.map(() => "?").join(", ");
   const row = await db.getFirstAsync<ProductRow>(
-    "SELECT * FROM products WHERE barcode = ? AND shop_id = ?",
-    barcode.trim(),
+    `SELECT * FROM products WHERE barcode IN (${placeholders}) AND shop_id = ?`,
+    ...candidates,
     shopId,
   );
   return row ? mapProduct(row) : null;

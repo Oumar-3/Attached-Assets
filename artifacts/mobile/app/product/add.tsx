@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { Directory, File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -69,6 +69,13 @@ export default function AddProductScreen() {
   const [showDetails, setShowDetails] = useState(!!initialBarcode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (typeof initialBarcode === "string" && initialBarcode.trim()) {
+      setBarcode(initialBarcode);
+      setShowDetails(true);
+    }
+  }, [initialBarcode]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;

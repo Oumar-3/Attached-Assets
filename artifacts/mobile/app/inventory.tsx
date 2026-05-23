@@ -9,9 +9,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { useProducts } from "@/context/ProductsContext";
 import { useColors } from "@/hooks/useColors";
 import type { ProductRecord } from "@/models";
+import { BARCODE_TYPES } from "@/utils/barcode";
 import { playScanFeedback } from "@/utils/scanFeedback";
-
-const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "itf14"] as const;
 
 type InventoryInputProps = {
   colors: ReturnType<typeof useColors>;
@@ -66,6 +65,7 @@ export default function InventoryScreen() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -177,10 +177,20 @@ export default function InventoryScreen() {
               <CameraView
                 style={styles.camera}
                 facing="back"
+                zoom={0.08}
+                enableTorch={torchEnabled}
                 barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
-                onBarcodeScanned={locked ? undefined : handleScanned}
+                onBarcodeScanned={handleScanned}
               />
               <View style={styles.scanFrame} />
+              <TouchableOpacity
+                style={[styles.torchBtn, torchEnabled && styles.torchBtnActive]}
+                onPress={() => setTorchEnabled(value => !value)}
+                activeOpacity={0.85}
+              >
+                <Feather name={torchEnabled ? "zap-off" : "zap"} size={18} color="#fff" />
+                <Text style={styles.torchText}>{torchEnabled ? "Lampe active" : "Lampe"}</Text>
+              </TouchableOpacity>
               <View style={styles.scanHint}>
                 <Text style={styles.scanHintText}>Scannez puis comptez le stock reel</Text>
               </View>
@@ -370,6 +380,9 @@ const styles = StyleSheet.create({
   cameraWrap: { flex: 1 },
   camera: { flex: 1 },
   scanFrame: { position: "absolute", left: 54, right: 54, top: 64, bottom: 64, borderWidth: 3, borderColor: "#fff", borderRadius: 16 },
+  torchBtn: { position: "absolute", top: 14, right: 14, minHeight: 38, borderRadius: 999, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7, backgroundColor: "rgba(0,0,0,0.45)" },
+  torchBtnActive: { backgroundColor: "rgba(5,150,105,0.85)" },
+  torchText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
   scanHint: { position: "absolute", left: 16, right: 16, bottom: 18, alignItems: "center" },
   scanHintText: { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold", fontWeight: "600", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
   manualCard: { borderWidth: 1, borderRadius: 12, padding: 16, gap: 12 },

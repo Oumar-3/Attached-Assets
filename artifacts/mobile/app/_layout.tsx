@@ -5,7 +5,6 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
@@ -24,8 +23,6 @@ import { ShopProfileProvider } from "@/context/ShopProfileContext";
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // Expo Go/web can start without a registered native splash screen.
 });
-
-const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
@@ -71,23 +68,21 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="auto" />
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <DatabaseProvider>
-            <ShopProfileProvider>
-              <ProductsProvider>
-                <DebtsProvider>
-                  <SalesProvider>
-                    <AuthProvider>
-                      <GestureHandlerRootView style={{ flex: 1 }}>
-                        <RootLayoutNav />
-                      </GestureHandlerRootView>
-                    </AuthProvider>
-                  </SalesProvider>
-                </DebtsProvider>
-              </ProductsProvider>
-            </ShopProfileProvider>
-          </DatabaseProvider>
-        </QueryClientProvider>
+        <DatabaseProvider>
+          <ShopProfileProvider>
+            <ProductsProvider>
+              <DebtsProvider>
+                <SalesProvider>
+                  <AuthProvider>
+                    <GestureHandlerRootView style={{ flex: 1 }}>
+                      <RootLayoutNav />
+                    </GestureHandlerRootView>
+                  </AuthProvider>
+                </SalesProvider>
+              </DebtsProvider>
+            </ProductsProvider>
+          </ShopProfileProvider>
+        </DatabaseProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

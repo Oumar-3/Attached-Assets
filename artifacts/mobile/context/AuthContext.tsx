@@ -1,6 +1,9 @@
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
+import { makeRedirectUri } from "expo-auth-session";
+import * as QueryParams from "expo-auth-session/build/QueryParams";
+import * as WebBrowser from "expo-web-browser";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { getSupabaseClient, isSupabaseConfigured } from "@/services/supabase/client";
@@ -19,18 +22,26 @@ type AuthContextType = {
   isLoading: boolean;
   sessionKey: number;
   login: (email: string, password: string) => Promise<AppUser>;
+  loginWithGoogle: () => Promise<AppUser>;
   register: (name: string, email: string, password: string, shopName: string) => Promise<AppUser>;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+WebBrowser.maybeCompleteAuthSession();
+
 function mapUser(user: SupabaseUser | null): AppUser | null {
   if (!user) return null;
+  const metadataName = typeof user.user_metadata.name === "string"
+    ? user.user_metadata.name
+    : typeof user.user_metadata.full_name === "string"
+      ? user.user_metadata.full_name
+      : "";
   return {
     id: user.id,
     email: user.email ?? "",
-    name: typeof user.user_metadata.name === "string" ? user.user_metadata.name : "",
+    name: metadataName,
     shopName: typeof user.user_metadata.shop_name === "string" ? user.user_metadata.shop_name : "",
   };
 }
@@ -138,6 +149,26 @@ async function getVerifiedCurrentUser() {
   return data.user;
 }
 
+function getOAuthSessionFromUrl(url: string) {
+  const { params, errorCode } = QueryParams.getQueryParams(url);
+  if (errorCode) throw new Error(errorCode);
+  return {
+    accessToken: params.access_token,
+    refreshToken: params.refresh_token,
+    code: params.code,
+  };
+}
+
+function getGoogleRedirectUrl() {
+  const envRedirectUrl = process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim();
+  if (envRedirectUrl) return envRedirectUrl;
+  const redirectUrl = makeRedirectUri({ path: "auth/callback" });
+  if (Platform.OS !== "web" && redirectUrl.includes("localhost")) {
+    throw new Error("Google Login pointe encore vers localhost. Relancez Expo avec pnpm run dev:phone ou renseignez EXPO_PUBLIC_AUTH_REDIRECT_URL avec l'URL exp://.../--/auth/callback affichee par Expo.");
+  }
+  return redirectUrl;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -225,6 +256,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return nextUser;
   }
 
+  async function loginWithGoogle() {
+    const supabase = requireSupabase();
+    const redirectTo = getGoogleRedirectUrl();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true,
+      },
+    });
+    if (error) throw new Error(getFriendlyAuthErrorMessage(error.message));
+    if (!data.url) throw new Error("Connexion Google indisponible.");
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    if (result.type !== "success") {
+      throw new Error("Connexion Google annulee.");
+    }
+
+    const { accessToken, refreshToken, code } = getOAuthSessionFromUrl(result.url);
+    if (code) {
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) throw new Error(getFriendlyAuthErrorMessage(exchangeError.message));
+    } else if (accessToken && refreshToken) {
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (sessionError) throw new Error(getFriendlyAuthErrorMessage(sessionError.message));
+    } else {
+      throw new Error("Session Google introuvable apres connexion.");
+    }
+
+    const verifiedUser = await getVerifiedCurrentUser();
+    const nextUser = mapUser(verifiedUser);
+    if (!nextUser) throw new Error("Session introuvable apres connexion Google.");
+    authMutationRef.current += 1;
+    setUser(nextUser);
+    setSessionKey(key => key + 1);
+    return nextUser;
+  }
+
   async function register(name: string, email: string, password: string, shopName: string) {
     const supabase = requireSupabase();
     const { data, error } = await supabase.auth.signUp({
@@ -288,7 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ user, isConfigured, isLoading, sessionKey, login, register, logout }),
+    () => ({ user, isConfigured, isLoading, sessionKey, login, loginWithGoogle, register, logout }),
     [isConfigured, isLoading, sessionKey, user],
   );
 

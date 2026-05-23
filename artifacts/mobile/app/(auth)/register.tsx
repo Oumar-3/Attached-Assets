@@ -20,6 +20,7 @@ import { useDebts } from "@/context/DebtsContext";
 import { useProducts } from "@/context/ProductsContext";
 import { useSales } from "@/context/SalesContext";
 import { useShopProfile } from "@/context/ShopProfileContext";
+import { getShopProfileAsync } from "@/database";
 import { createLocalMainShopForCloudUserAsync, resetLocalDataForCloudUserAsync } from "@/services/localAccountData";
 import { syncBasicTablesAsync } from "@/services/sync/basicSync";
 
@@ -27,7 +28,7 @@ export default function RegisterScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const { saveProfile, refreshProfile } = useShopProfile();
   const { refreshProducts } = useProducts();
   const { refreshSales } = useSales();
@@ -44,6 +45,47 @@ export default function RegisterScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  async function completeGoogleRegister() {
+    const nextUser = await loginWithGoogle();
+    await resetLocalDataForCloudUserAsync(nextUser.id);
+    await createLocalMainShopForCloudUserAsync(
+      nextUser.id,
+      nextUser.shopName || "Ma boutique",
+      nextUser.name || nextUser.email,
+    );
+    try {
+      await syncBasicTablesAsync();
+    } catch (syncError) {
+      console.warn("Google register sync failed", syncError);
+    }
+    const existingProfile = await getShopProfileAsync();
+    if (!existingProfile) {
+      await saveProfile({
+        shopName: nextUser.shopName || "Ma boutique",
+        ownerName: nextUser.name || nextUser.email,
+        phone: "",
+        address: "",
+      });
+    }
+    await Promise.all([refreshProfile(), refreshProducts(), refreshSales(), refreshDebts()]);
+    router.replace("/");
+  }
+
+  async function handleGoogleRegister() {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setError("");
+    setLoading(true);
+    try {
+      await completeGoogleRegister();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur de connexion Google");
+    } finally {
+      submittingRef.current = false;
+      setLoading(false);
+    }
+  }
 
   async function handleRegister() {
     if (submittingRef.current) return;
@@ -159,6 +201,16 @@ export default function RegisterScreen() {
               <Text style={styles.btnText}>Créer mon compte</Text>
             )}
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.googleBtn, { backgroundColor: colors.card, borderColor: colors.border }, loading && styles.btnDisabled]}
+            onPress={handleGoogleRegister}
+            disabled={loading}
+            activeOpacity={0.82}
+          >
+            <Feather name="chrome" size={18} color={colors.text} />
+            <Text style={[styles.googleBtnText, { color: colors.text }]}>Continuer avec Google</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -218,4 +270,14 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   btnText: { fontSize: 16, fontWeight: "700", fontFamily: "Inter_700Bold", color: "#fff" },
+  googleBtn: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  googleBtnText: { fontSize: 15, fontWeight: "700", fontFamily: "Inter_700Bold" },
 });

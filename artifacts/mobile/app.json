@@ -29,6 +29,12 @@
       ],
       "expo-font",
       "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SamaStock utilise la camera pour scanner les codes-barres des produits."
+        }
+      ],
       "expo-sqlite"
     ],
     "experiments": {

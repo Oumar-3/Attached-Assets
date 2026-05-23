@@ -2,15 +2,14 @@ import { Feather } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useProducts } from "@/context/ProductsContext";
 import { useColors } from "@/hooks/useColors";
 import type { ProductRecord } from "@/models";
+import { BARCODE_TYPES } from "@/utils/barcode";
 import { playScanFeedback } from "@/utils/scanFeedback";
-
-const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "itf14"] as const;
 
 type ScanInputProps = {
   colors: ReturnType<typeof useColors>;
@@ -48,8 +47,10 @@ export default function ProductScanScreen() {
   const [locked, setLocked] = useState(false);
   const [message, setMessage] = useState("");
   const [foundProduct, setFoundProduct] = useState<ProductRecord | null>(null);
+  const [unknownCode, setUnknownCode] = useState("");
   const [addQuantity, setAddQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
+  const [torchEnabled, setTorchEnabled] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -65,14 +66,14 @@ export default function ProductScanScreen() {
       const product = await findByBarcode(code);
       if (product) {
         setFoundProduct(product);
+        setUnknownCode("");
         setAddQuantity("1");
         setUnitCost(product.buyPrice > 0 ? `${product.buyPrice}` : "");
         setMessage("Produit trouve. Ajoutez rapidement le stock recu.");
       } else {
-        setMessage("Produit inconnu. Ouverture du formulaire d'ajout...");
-        setTimeout(() => {
-          router.replace({ pathname: "/product/add", params: { barcode: code } });
-        }, 250);
+        setFoundProduct(null);
+        setUnknownCode(code);
+        setMessage("Produit inconnu. Vous pouvez l'ajouter a la boutique.");
       }
     } finally {
       setBusy(false);
@@ -81,7 +82,7 @@ export default function ProductScanScreen() {
   }
 
   function handleScanned(result: BarcodeScanningResult) {
-    if (!locked) {
+    if (!locked && !foundProduct && !unknownCode) {
       playScanFeedback();
       handleCode(result.data);
     }
@@ -123,36 +124,51 @@ export default function ProductScanScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.body}>
-        <View style={[styles.scanCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {!permission ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : !hasPermission ? (
-            <View style={styles.permissionBox}>
-              <Feather name="camera" size={40} color={colors.primary} />
-              <Text style={[styles.permissionTitle, { color: colors.text }]}>Autoriser la camera</Text>
-              <Text style={[styles.permissionText, { color: colors.mutedForeground }]}>
-                Le scan permet d'ajouter du stock ou de creer un produit plus vite.
-              </Text>
-              <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={requestPermission}>
-                <Text style={styles.primaryBtnText}>Autoriser</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.cameraWrap}>
-              <CameraView
-                style={styles.camera}
-                facing="back"
-                barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
-                onBarcodeScanned={locked || foundProduct ? undefined : handleScanned}
-              />
-              <View style={styles.scanFrame} />
-              <View style={styles.scanHint}>
-                <Text style={styles.scanHintText}>Cadrez le code-barres</Text>
+      <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={topPad + 64}>
+        <ScrollView
+          contentContainerStyle={[styles.bodyContent, { paddingBottom: bottomPad + 24 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.scanCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {!permission ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : !hasPermission ? (
+              <View style={styles.permissionBox}>
+                <Feather name="camera" size={40} color={colors.primary} />
+                <Text style={[styles.permissionTitle, { color: colors.text }]}>Autoriser la camera</Text>
+                <Text style={[styles.permissionText, { color: colors.mutedForeground }]}>
+                  Le scan permet d'ajouter du stock ou de creer un produit plus vite.
+                </Text>
+                <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={requestPermission}>
+                  <Text style={styles.primaryBtnText}>Autoriser</Text>
+                </TouchableOpacity>
               </View>
-            </View>
-          )}
-        </View>
+            ) : (
+              <View style={styles.cameraWrap}>
+                <CameraView
+                  style={styles.camera}
+                  facing="back"
+                  zoom={0.08}
+                  enableTorch={torchEnabled}
+                  barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
+                  onBarcodeScanned={handleScanned}
+                />
+                <View style={styles.scanFrame} />
+                <TouchableOpacity
+                  style={[styles.torchBtn, torchEnabled && styles.torchBtnActive]}
+                  onPress={() => setTorchEnabled(value => !value)}
+                  activeOpacity={0.85}
+                >
+                  <Feather name={torchEnabled ? "zap-off" : "zap"} size={18} color="#fff" />
+                  <Text style={styles.torchText}>{torchEnabled ? "Lampe active" : "Lampe"}</Text>
+                </TouchableOpacity>
+                <View style={styles.scanHint}>
+                  <Text style={styles.scanHintText}>Cadrez le code-barres</Text>
+                </View>
+              </View>
+            )}
+          </View>
 
         {foundProduct ? (
           <View style={[styles.foundCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -192,6 +208,7 @@ export default function ProductScanScreen() {
                 style={[styles.secondaryBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
                 onPress={() => {
                   setFoundProduct(null);
+                  setUnknownCode("");
                   setManualCode("");
                   setUnitCost("");
                   setLocked(false);
@@ -206,6 +223,38 @@ export default function ProductScanScreen() {
                 disabled={busy}
               >
                 {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Ajouter stock</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : unknownCode ? (
+          <View style={[styles.manualCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.foundHeader}>
+              <View style={[styles.foundIcon, { backgroundColor: colors.warning + "18" }]}>
+                <Feather name="alert-triangle" size={22} color={colors.warning} />
+              </View>
+              <View style={styles.foundInfo}>
+                <Text style={[styles.manualTitle, { color: colors.text }]}>Produit introuvable</Text>
+                <Text style={[styles.manualText, { color: colors.mutedForeground }]}>Code scanne : {unknownCode}</Text>
+              </View>
+            </View>
+            {message ? <Text style={[styles.message, { color: colors.primary }]}>{message}</Text> : null}
+            <View style={styles.foundActions}>
+              <TouchableOpacity
+                style={[styles.secondaryBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+                onPress={() => {
+                  setUnknownCode("");
+                  setManualCode("");
+                  setLocked(false);
+                  setMessage("");
+                }}
+              >
+                <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Scanner encore</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryBtn, styles.flexBtn, { backgroundColor: colors.primary }]}
+                onPress={() => router.replace({ pathname: "/product/add", params: { barcode: unknownCode } })}
+              >
+                <Text style={styles.primaryBtnText}>Ajouter produit</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -224,7 +273,8 @@ export default function ProductScanScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <View style={{ height: bottomPad }} />
     </View>
@@ -237,14 +287,18 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1 },
   iconBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   title: { flex: 1, textAlign: "center", fontSize: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  body: { flex: 1, padding: 16, gap: 14 },
-  scanCard: { flex: 1, borderWidth: 1, borderRadius: 12, overflow: "hidden", minHeight: 280 },
+  body: { flex: 1 },
+  bodyContent: { padding: 16, gap: 14, flexGrow: 1 },
+  scanCard: { height: 320, borderWidth: 1, borderRadius: 12, overflow: "hidden" },
   permissionBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
   permissionTitle: { fontSize: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
   permissionText: { fontSize: 14, textAlign: "center", lineHeight: 20, fontFamily: "Inter_400Regular" },
   cameraWrap: { flex: 1 },
   camera: { flex: 1 },
   scanFrame: { position: "absolute", left: 52, right: 52, top: 62, bottom: 62, borderWidth: 3, borderColor: "#fff", borderRadius: 16 },
+  torchBtn: { position: "absolute", top: 14, right: 14, minHeight: 38, borderRadius: 999, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7, backgroundColor: "rgba(0,0,0,0.45)" },
+  torchBtnActive: { backgroundColor: "rgba(5,150,105,0.85)" },
+  torchText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
   scanHint: { position: "absolute", left: 16, right: 16, bottom: 18, alignItems: "center" },
   scanHintText: { color: "#fff", fontSize: 13, fontFamily: "Inter_600SemiBold", fontWeight: "600", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
   manualCard: { borderWidth: 1, borderRadius: 12, padding: 16, gap: 10 },

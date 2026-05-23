@@ -26,6 +26,7 @@ import { useProducts } from "@/context/ProductsContext";
 import { useSales } from "@/context/SalesContext";
 import { useColors } from "@/hooks/useColors";
 import type { ProductRecord } from "@/models";
+import { BARCODE_TYPES, getBarcodeCandidates } from "@/utils/barcode";
 import { playScanFeedback } from "@/utils/scanFeedback";
 
 type CartItem = {
@@ -91,6 +92,7 @@ export default function SaleScreen() {
   const [scannedProduct, setScannedProduct] = useState<ProductRecord | null>(null);
   const [scanQuantityInput, setScanQuantityInput] = useState("1");
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -195,9 +197,9 @@ export default function SaleScreen() {
   }
 
   function findProductFromCode(code: string) {
-    const cleanCode = code.trim();
-    if (!cleanCode) return null;
-    return products.find(product => product.barcode?.trim() === cleanCode && product.stock > 0) ?? null;
+    const candidates = getBarcodeCandidates(code);
+    if (candidates.length === 0) return null;
+    return products.find(product => product.barcode && candidates.includes(product.barcode.trim()) && product.stock > 0) ?? null;
   }
 
   function handleManualCode() {
@@ -610,10 +612,20 @@ export default function SaleScreen() {
                 <CameraView
                   style={styles.camera}
                   facing="back"
-                  barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "itf14"] }}
-                  onBarcodeScanned={scanLocked ? undefined : handleScanned}
+                  zoom={0.08}
+                  enableTorch={torchEnabled}
+                  barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
+                  onBarcodeScanned={handleScanned}
                 />
                 <View style={styles.scanFrame} />
+                <TouchableOpacity
+                  style={[styles.torchBtn, torchEnabled && styles.torchBtnActive]}
+                  onPress={() => setTorchEnabled(value => !value)}
+                  activeOpacity={0.85}
+                >
+                  <Feather name={torchEnabled ? "zap-off" : "zap"} size={18} color="#fff" />
+                  <Text style={styles.torchText}>{torchEnabled ? "Lampe active" : "Lampe"}</Text>
+                </TouchableOpacity>
                 <View style={styles.scanHint}>
                   <Text style={styles.scanHintText}>{scanMessage || "Cadrez le code-barres du produit"}</Text>
                 </View>
@@ -897,6 +909,9 @@ const styles = StyleSheet.create({
   cameraWrap: { flex: 1, borderRadius: 18, overflow: "hidden" },
   camera: { flex: 1 },
   scanFrame: { position: "absolute", left: 52, right: 52, top: 120, height: 180, borderWidth: 3, borderColor: "#fff", borderRadius: 18 },
+  torchBtn: { position: "absolute", top: 18, right: 18, minHeight: 38, borderRadius: 999, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7, backgroundColor: "rgba(0,0,0,0.45)" },
+  torchBtnActive: { backgroundColor: "rgba(5,150,105,0.85)" },
+  torchText: { color: "#fff", fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
   scanHint: { position: "absolute", left: 20, right: 20, bottom: 28, alignItems: "center" },
   scanHintText: {
     color: "#fff",
