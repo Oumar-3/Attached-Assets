@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -29,6 +29,7 @@ export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ email?: string }>();
   const { login, loginWithGoogle } = useAuth();
   const { refreshProfile, saveProfile } = useShopProfile();
   const { refreshProducts } = useProducts();
@@ -44,6 +45,12 @@ export default function LoginScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  useEffect(() => {
+    if (typeof params.email === "string" && params.email.trim()) {
+      setEmail(params.email.trim());
+    }
+  }, [params.email]);
 
   async function completeCloudLogin(nextUser: Awaited<ReturnType<typeof login>>) {
     await resetLocalDataForCloudUserAsync(nextUser.id);

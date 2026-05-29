@@ -2,7 +2,7 @@
   "expo": {
     "name": "SamaStock",
     "slug": "samastock",
-    "version": "1.0.0",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/logo1.png",
     "scheme": "samastock",
@@ -16,7 +16,16 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "package": "com.samastock.app",
+      "versionCode": 5,
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
     "web": {
       "favicon": "./assets/images/logo1.png"
     },
@@ -35,11 +44,18 @@
           "cameraPermission": "SamaStock utilise la camera pour scanner les codes-barres des produits."
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-notifications",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "89e6026c-7a9c-497f-9fad-d985e31b34fd"
+      }
     }
   }
 }

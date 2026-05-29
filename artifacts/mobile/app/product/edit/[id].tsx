@@ -114,7 +114,7 @@ export default function EditProductScreen() {
 
   async function pickImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       ...PRODUCT_IMAGE_PICKER_OPTIONS,
     });
     if (!result.canceled) {

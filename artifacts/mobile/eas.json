@@ -1,0 +1,27 @@
+{
+  "cli": {
+    "version": ">= 13.0.0"
+  },
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ukvwckxalrmpkduxgxhy.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_hsAHUijHiGVZMLR0oLjSHw_K97DYvOO",
+        "EXPO_PUBLIC_AUTH_REDIRECT_URL": "samastock://auth/callback"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ukvwckxalrmpkduxgxhy.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_hsAHUijHiGVZMLR0oLjSHw_K97DYvOO",
+        "EXPO_PUBLIC_AUTH_REDIRECT_URL": "samastock://auth/callback"
+      }
+    }
+  }
+}

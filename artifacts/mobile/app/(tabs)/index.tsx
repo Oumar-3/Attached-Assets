@@ -1,8 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
-import { Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { AppState, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { StatCard } from "@/components/StatCard";
@@ -113,6 +113,9 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      void Promise.all([refreshProducts(), refreshSales(), refreshDebts()]).catch(error => {
+        console.warn("Dashboard refresh failed", error);
+      });
       getStockAlertStateAsync().then(state => {
         if (!active) return;
         setReadAlertIds(state.readIds);
@@ -121,8 +124,19 @@ export default function DashboardScreen() {
       return () => {
         active = false;
       };
-    }, []),
+    }, [refreshDebts, refreshProducts, refreshSales]),
   );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") {
+        void Promise.all([refreshProducts(), refreshSales(), refreshDebts()]).catch(error => {
+          console.warn("Dashboard foreground refresh failed", error);
+        });
+      }
+    });
+    return () => subscription.remove();
+  }, [refreshDebts, refreshProducts, refreshSales]);
 
   async function onRefresh() {
     setRefreshing(true);

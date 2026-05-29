@@ -22,6 +22,12 @@ import { useProducts } from "@/context/ProductsContext";
 import { useSales } from "@/context/SalesContext";
 import { useShopProfile } from "@/context/ShopProfileContext";
 import { useColors } from "@/hooks/useColors";
+import {
+  disableLocalNotificationsAsync,
+  getLocalNotificationsEnabledAsync,
+  requestAndEnableLocalNotificationsAsync,
+  refreshBusinessRemindersAsync,
+} from "@/services/notifications/localNotifications";
 import { getBackupOverviewAsync, type BackupOverview } from "@/services/sync/backupStatus";
 import { syncBasicTablesAsync } from "@/services/sync/basicSync";
 
@@ -45,9 +51,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { profile, isLoading, saveProfile, refreshProfile } = useShopProfile();
   const { user, isConfigured, logout } = useAuth();
-  const { refreshProducts } = useProducts();
+  const { lowStockSuggestions, refreshProducts } = useProducts();
   const { refreshSales } = useSales();
-  const { refreshDebts } = useDebts();
+  const { totalOpenDebt, refreshDebts } = useDebts();
 
   const [form, setForm] = useState<Record<FieldName, string>>({
     shopName: "",
@@ -59,6 +65,8 @@ export default function SettingsScreen() {
   const [backupOverview, setBackupOverview] = useState<BackupOverview>({ pendingCount: 0, lastBackupAt: null });
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationsBusy, setNotificationsBusy] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -77,6 +85,10 @@ export default function SettingsScreen() {
   useEffect(() => {
     void loadBackupOverview();
   }, [user]);
+
+  useEffect(() => {
+    void getLocalNotificationsEnabledAsync().then(setNotificationsEnabled).catch(() => setNotificationsEnabled(false));
+  }, []);
 
   async function loadBackupOverview() {
     setBackupLoading(true);
@@ -114,6 +126,23 @@ export default function SettingsScreen() {
   }
 
   async function handleLogout() {
+    Alert.alert(
+      "Se deconnecter ?",
+      "Vous pourrez vous reconnecter avec le meme compte pour retrouver vos donnees sauvegardees.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Deconnexion",
+          style: "destructive",
+          onPress: () => {
+            void performLogout();
+          },
+        },
+      ],
+    );
+  }
+
+  async function performLogout() {
     try {
       await logout();
       router.replace("/(auth)/login");
@@ -147,6 +176,31 @@ export default function SettingsScreen() {
     }
   }
 
+  async function handleToggleNotifications() {
+    setNotificationsBusy(true);
+    try {
+      if (notificationsEnabled) {
+        await disableLocalNotificationsAsync();
+        setNotificationsEnabled(false);
+      } else {
+        const enabled = await requestAndEnableLocalNotificationsAsync();
+        setNotificationsEnabled(enabled);
+        if (!enabled) {
+          Alert.alert("Notifications refusees", "Activez les notifications dans les reglages du telephone pour recevoir les rappels.");
+        } else {
+          await refreshBusinessRemindersAsync({
+            lowStockCount: lowStockSuggestions.length,
+            totalOpenDebt,
+          });
+        }
+      }
+    } catch (err) {
+      Alert.alert("Notifications", err instanceof Error ? err.message : "Impossible de modifier les notifications.");
+    } finally {
+      setNotificationsBusy(false);
+    }
+  }
+
   function formatBackupDate(value: string | null) {
     if (!value) return "Jamais";
     const date = new Date(value);
@@ -169,6 +223,12 @@ export default function SettingsScreen() {
     : backupOverview.pendingCount > 0
       ? `${backupOverview.pendingCount} changement${backupOverview.pendingCount > 1 ? "s" : ""} a sauvegarder.`
       : `Derniere sauvegarde : ${formatBackupDate(backupOverview.lastBackupAt)}`;
+  const accountState = user ? "Connecte" : "Local";
+  const backupState = user
+    ? backupOverview.pendingCount > 0
+      ? `${backupOverview.pendingCount} en attente`
+      : "A jour"
+    : "Telephone";
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -186,20 +246,52 @@ export default function SettingsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.brandCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={[styles.brandIcon, { backgroundColor: colors.primary + "18" }]}>
-              <SamaStockLogo size={36} />
+          <View style={[styles.brandCard, { backgroundColor: colors.primaryDark }]}>
+            <View style={styles.brandMain}>
+              <View style={styles.brandIcon}>
+                <SamaStockLogo size={38} />
+              </View>
+              <View style={styles.brandText}>
+                <Text style={styles.brandName}>SamaStock</Text>
+                <Text style={styles.brandSubtitle}>
+                  {user ? "Compte actif et sauvegarde disponible" : "Mode local, sauvegarde sur ce telephone"}
+                </Text>
+              </View>
             </View>
-            <View style={styles.brandText}>
-              <Text style={[styles.brandName, { color: colors.text }]}>SamaStock</Text>
-              <Text style={[styles.brandSubtitle, { color: colors.mutedForeground }]}>
-                {user ? "Vos donnees sont protegees avec votre compte" : "Vos donnees restent sur ce telephone"}
-              </Text>
+            <View style={styles.brandMetaRow}>
+              <View style={styles.brandPill}>
+                <Feather name={user ? "cloud" : "smartphone"} size={14} color="#FFFFFF" />
+                <Text style={styles.brandPillText}>{accountState}</Text>
+              </View>
+              <View style={styles.brandPill}>
+                <Feather name={notificationsEnabled ? "bell" : "bell-off"} size={14} color="#FFFFFF" />
+                <Text style={styles.brandPillText}>{notificationsEnabled ? "Rappels actifs" : "Rappels off"}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.quickGrid}>
+            <View style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.quickIcon, { backgroundColor: colors.primary + "12" }]}>
+                <Feather name={user ? "user-check" : "user"} size={18} color={colors.primary} />
+              </View>
+              <Text style={[styles.quickLabel, { color: colors.mutedForeground }]}>Compte</Text>
+              <Text style={[styles.quickValue, { color: colors.text }]} numberOfLines={1}>{user?.email ?? "Non connecte"}</Text>
+            </View>
+            <View style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.quickIcon, { backgroundColor: (backupOverview.pendingCount > 0 ? colors.warning : colors.success) + "12" }]}>
+                <Feather name={backupOverview.pendingCount > 0 ? "clock" : "check-circle"} size={18} color={backupOverview.pendingCount > 0 ? colors.warning : colors.success} />
+              </View>
+              <Text style={[styles.quickLabel, { color: colors.mutedForeground }]}>Sauvegarde</Text>
+              <Text style={[styles.quickValue, { color: colors.text }]}>{backupLoading ? "Verification..." : backupState}</Text>
             </View>
           </View>
 
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Profil boutique</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Profil boutique</Text>
+              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Informations visibles sur les recus.</Text>
+            </View>
             <View style={[styles.formCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {isLoading ? (
                 <View style={styles.loadingBox}>
@@ -237,7 +329,10 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Sauvegarde</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Sauvegarde</Text>
+              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Protection et recuperation des donnees.</Text>
+            </View>
             <View style={[styles.cloudCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cloudHeader}>
                 <View style={[styles.cloudIcon, { backgroundColor: user ? colors.primary + "16" : colors.warning + "16" }]}>
@@ -276,7 +371,50 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Compte</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Notifications</Text>
+              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Rappels utiles, sans bruit inutile.</Text>
+            </View>
+            <View style={[styles.cloudCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.cloudHeader}>
+                <View style={[styles.cloudIcon, { backgroundColor: (notificationsEnabled ? colors.primary : colors.mutedForeground) + "16" }]}>
+                  <Feather name="bell" size={20} color={notificationsEnabled ? colors.primary : colors.mutedForeground} />
+                </View>
+                <View style={styles.cloudText}>
+                  <Text style={[styles.cloudTitle, { color: colors.text }]}>
+                    {notificationsEnabled ? "Notifications activees" : "Notifications desactivees"}
+                  </Text>
+                  <Text style={[styles.cloudSubtitle, { color: colors.mutedForeground }]} numberOfLines={2}>
+                    Rappel quand le stock ou les dettes changent.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.notice, { backgroundColor: colors.info + "12", borderColor: colors.info + "25" }]}>
+                <Feather name="bell" size={16} color={colors.info} />
+                <Text style={[styles.noticeText, { color: colors.info }]}>
+                  Aujourd'hui : {lowStockSuggestions.length} stock faible • {Math.round(totalOpenDebt).toLocaleString("fr-FR")} FCFA a recuperer.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.cloudBtn, { backgroundColor: notificationsEnabled ? colors.destructive : colors.primary }, notificationsBusy && { opacity: 0.7 }]}
+                onPress={handleToggleNotifications}
+                disabled={notificationsBusy}
+                activeOpacity={0.85}
+              >
+                {notificationsBusy ? <ActivityIndicator color="#fff" /> : <Feather name={notificationsEnabled ? "bell-off" : "bell"} size={18} color="#fff" />}
+                {!notificationsBusy && <Text style={styles.cloudBtnText}>{notificationsEnabled ? "Desactiver" : "Activer les notifications"}</Text>}
+              </TouchableOpacity>
+
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Compte</Text>
+              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>Connexion et acces cloud.</Text>
+            </View>
             <View style={[styles.cloudCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cloudHeader}>
                 <View style={[styles.cloudIcon, { backgroundColor: colors.primary + "16" }]}>
@@ -335,7 +473,9 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Application</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Application</Text>
+            </View>
             <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <InfoRow label="Devise" value="FCFA" />
               <View style={[styles.infoDivider, { backgroundColor: colors.border }]} />
@@ -364,23 +504,34 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: 1, gap: 12 },
   iconBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   title: { flex: 1, fontSize: 20, fontFamily: "Inter_700Bold", fontWeight: "700", textAlign: "center" },
-  body: { padding: 16, gap: 18 },
-  brandCard: { flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1, padding: 16, gap: 12 },
-  brandIcon: { width: 46, height: 46, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  body: { padding: 16, gap: 16 },
+  brandCard: { borderRadius: 22, padding: 18, gap: 18, overflow: "hidden" },
+  brandMain: { flexDirection: "row", alignItems: "center", gap: 13 },
+  brandIcon: { width: 54, height: 54, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
   brandText: { flex: 1, gap: 2 },
-  brandName: { fontSize: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  brandSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  section: { gap: 9 },
-  sectionTitle: { fontSize: 11, fontFamily: "Inter_600SemiBold", fontWeight: "600", textTransform: "uppercase", marginLeft: 4 },
-  formCard: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 14 },
+  brandName: { color: "#FFFFFF", fontSize: 22, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  brandSubtitle: { color: "rgba(255,255,255,0.78)", fontSize: 12, lineHeight: 17, fontFamily: "Inter_500Medium", fontWeight: "500" },
+  brandMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  brandPill: { minHeight: 31, borderRadius: 999, paddingHorizontal: 11, alignItems: "center", flexDirection: "row", gap: 7, backgroundColor: "rgba(255,255,255,0.13)" },
+  brandPillText: { color: "#FFFFFF", fontSize: 12, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  quickGrid: { flexDirection: "row", gap: 10 },
+  quickTile: { flex: 1, minHeight: 108, borderRadius: 16, borderWidth: 1, padding: 13, gap: 7 },
+  quickIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 3 },
+  quickLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", fontWeight: "600", textTransform: "uppercase" },
+  quickValue: { fontSize: 13, lineHeight: 18, fontFamily: "Inter_700Bold", fontWeight: "700" },
+  section: { gap: 10 },
+  sectionHeader: { gap: 2, paddingHorizontal: 4 },
+  sectionTitle: { fontSize: 11, fontFamily: "Inter_700Bold", fontWeight: "700", textTransform: "uppercase" },
+  sectionHint: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  formCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 14 },
   field: { gap: 7 },
   label: { fontSize: 12, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
-  inputBox: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 12, gap: 10 },
+  inputBox: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 12, gap: 10 },
   input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
   loadingBox: { padding: 24 },
   saveBtn: { minHeight: 52, borderRadius: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 9 },
   saveBtnText: { color: "#fff", fontSize: 15, fontFamily: "Inter_700Bold", fontWeight: "700" },
-  cloudCard: { borderRadius: 14, borderWidth: 1, padding: 15, gap: 12 },
+  cloudCard: { borderRadius: 16, borderWidth: 1, padding: 15, gap: 12 },
   cloudHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   cloudIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   cloudText: { flex: 1, gap: 2 },

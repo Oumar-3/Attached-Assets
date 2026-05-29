@@ -1,12 +1,13 @@
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { AppState, Platform } from "react-native";
 import { makeRedirectUri } from "expo-auth-session";
-import * as QueryParams from "expo-auth-session/build/QueryParams";
 import * as WebBrowser from "expo-web-browser";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { getSupabaseClient, isSupabaseConfigured } from "@/services/supabase/client";
+import { getSupabaseAuthStorageKey, getSupabaseClient, isSupabaseConfigured } from "@/services/supabase/client";
+import { completeOAuthSessionFromUrlAsync } from "@/services/supabase/oauth";
 import { cancelCloudBackup } from "@/services/sync/autoBackup";
 
 export type AppUser = {
@@ -67,8 +68,13 @@ async function clearLocalAuthSession() {
 }
 
 async function clearStoredSupabaseSession() {
+  const authStorageKey = getSupabaseAuthStorageKey();
   const isSupabaseAuthKey = (key: string) =>
-    key.startsWith("sb-") || key.includes("supabase.auth") || key.includes("auth-token");
+    key === authStorageKey || key.startsWith("sb-") || key.includes("supabase.auth") || key.includes("auth-token");
+
+  if (Platform.OS !== "web") {
+    await SecureStore.deleteItemAsync(authStorageKey).catch(() => {});
+  }
 
   try {
     const keys = await AsyncStorage.getAllKeys();
@@ -142,6 +148,11 @@ function getFriendlyAuthErrorMessage(message: string) {
   return message;
 }
 
+function hasEmptyIdentityList(user: SupabaseUser | null) {
+  const identities = (user as SupabaseUser & { identities?: unknown[] } | null)?.identities;
+  return Array.isArray(identities) && identities.length === 0;
+}
+
 async function getVerifiedCurrentUser() {
   const { data, error } = await requireSupabase().auth.getUser();
   if (error) throw new Error(getFriendlyAuthErrorMessage(error.message));
@@ -149,22 +160,12 @@ async function getVerifiedCurrentUser() {
   return data.user;
 }
 
-function getOAuthSessionFromUrl(url: string) {
-  const { params, errorCode } = QueryParams.getQueryParams(url);
-  if (errorCode) throw new Error(errorCode);
-  return {
-    accessToken: params.access_token,
-    refreshToken: params.refresh_token,
-    code: params.code,
-  };
-}
-
-function getGoogleRedirectUrl() {
+function getAuthRedirectUrl() {
   const envRedirectUrl = process.env.EXPO_PUBLIC_AUTH_REDIRECT_URL?.trim();
   if (envRedirectUrl) return envRedirectUrl;
   const redirectUrl = makeRedirectUri({ path: "auth/callback" });
   if (Platform.OS !== "web" && redirectUrl.includes("localhost")) {
-    throw new Error("Google Login pointe encore vers localhost. Relancez Expo avec pnpm run dev:phone ou renseignez EXPO_PUBLIC_AUTH_REDIRECT_URL avec l'URL exp://.../--/auth/callback affichee par Expo.");
+    throw new Error("La redirection de connexion pointe encore vers localhost. Relancez Expo avec pnpm run dev:phone ou renseignez EXPO_PUBLIC_AUTH_REDIRECT_URL avec l'URL exp://.../--/auth/callback affichee par Expo.");
   }
   return redirectUrl;
 }
@@ -177,6 +178,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isLoggingOutRef = useRef(false);
   const isConfigured = isSupabaseConfigured();
 
+  async function expireCurrentSession() {
+    authMutationRef.current += 1;
+    try {
+      getSupabaseClient().auth.stopAutoRefresh();
+    } catch {
+      // Best effort only.
+    }
+    await clearStoredSupabaseSession();
+    setUser(null);
+    setSessionKey(key => key + 1);
+  }
+
+  async function restoreCurrentSession() {
+    const supabase = getSupabaseClient();
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (!data.session) {
+      setUser(null);
+      setSessionKey(key => key + 1);
+      return;
+    }
+
+    const { data: userData, error } = await supabase.auth.getUser();
+    if (error || !userData.user) {
+      if (error && isInvalidRefreshToken(error)) {
+        await expireCurrentSession();
+        return;
+      }
+      await clearStoredSupabaseSession();
+      setUser(null);
+      setSessionKey(key => key + 1);
+      return;
+    }
+
+    setUser(mapUser(userData.user));
+    setSessionKey(key => key + 1);
+  }
+
   useEffect(() => {
     if (!isConfigured) {
       setIsLoading(false);
@@ -185,41 +224,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const supabase = getSupabaseClient();
     const initialAuthMutation = authMutationRef.current;
-    supabase.auth.getSession()
-      .then(async ({ data }) => {
+    restoreCurrentSession()
+      .then(() => {
         if (authMutationRef.current !== initialAuthMutation) return;
-        if (!data.session) {
-          setUser(null);
-          setSessionKey(key => key + 1);
-          return;
-        }
-
-        const { data: userData, error } = await supabase.auth.getUser();
-        if (authMutationRef.current !== initialAuthMutation) return;
-        if (error || !userData.user) {
-          await clearStoredSupabaseSession();
-          setUser(null);
-          setSessionKey(key => key + 1);
-          return;
-        }
-
-        setUser(mapUser(userData.user));
-        setSessionKey(key => key + 1);
       })
       .catch(async error => {
         if (authMutationRef.current !== initialAuthMutation) return;
         if (isInvalidRefreshToken(error)) {
-          await clearStoredSupabaseSession();
+          await expireCurrentSession();
         } else {
           console.warn("Auth session restore failed", error);
+          setUser(null);
+          setSessionKey(key => key + 1);
         }
-        setUser(null);
-        setSessionKey(key => key + 1);
       })
       .finally(() => setIsLoading(false));
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "INITIAL_SESSION") return;
       if (event === "SIGNED_OUT" || isLoggingOutRef.current) {
         setUser(null);
         setSessionKey(key => key + 1);
@@ -232,6 +253,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       subscription.subscription.unsubscribe();
+    };
+  }, [isConfigured]);
+
+  useEffect(() => {
+    if (!isConfigured) return;
+    const supabase = getSupabaseClient();
+    if (Platform.OS !== "web" && AppState.currentState === "active") {
+      supabase.auth.startAutoRefresh();
+    }
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") {
+        if (Platform.OS !== "web") {
+          supabase.auth.startAutoRefresh();
+        }
+      } else if (Platform.OS !== "web") {
+        supabase.auth.stopAutoRefresh();
+      }
+
+      if (state === "active" && !isLoggingOutRef.current) {
+        void restoreCurrentSession().catch(error => {
+          if (isInvalidRefreshToken(error)) {
+            void expireCurrentSession();
+          } else {
+            console.warn("Auth foreground restore failed", error);
+          }
+        });
+      }
+    });
+    return () => {
+      subscription.remove();
+      if (Platform.OS !== "web") {
+        supabase.auth.stopAutoRefresh();
+      }
     };
   }, [isConfigured]);
 
@@ -258,7 +312,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function loginWithGoogle() {
     const supabase = requireSupabase();
-    const redirectTo = getGoogleRedirectUrl();
+    const redirectTo = getAuthRedirectUrl();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -274,19 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error("Connexion Google annulee.");
     }
 
-    const { accessToken, refreshToken, code } = getOAuthSessionFromUrl(result.url);
-    if (code) {
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-      if (exchangeError) throw new Error(getFriendlyAuthErrorMessage(exchangeError.message));
-    } else if (accessToken && refreshToken) {
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (sessionError) throw new Error(getFriendlyAuthErrorMessage(sessionError.message));
-    } else {
-      throw new Error("Session Google introuvable apres connexion.");
-    }
+    await completeOAuthSessionFromUrlAsync(result.url);
 
     const verifiedUser = await getVerifiedCurrentUser();
     const nextUser = mapUser(verifiedUser);
@@ -299,10 +341,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function register(name: string, email: string, password: string, shopName: string) {
     const supabase = requireSupabase();
+    const normalizedEmail = email.toLowerCase().trim();
     const { data, error } = await supabase.auth.signUp({
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       password,
       options: {
+        emailRedirectTo: getAuthRedirectUrl(),
         data: {
           name: name.trim(),
           shop_name: shopName.trim(),
@@ -313,10 +357,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!data.session) {
       await clearStoredSupabaseSession();
       setUser(null);
-      throw new Error("Compte cree. Confirmez votre email, puis connectez-vous.");
+      if (hasEmptyIdentityList(data.user)) {
+        throw new Error("Ce compte semble deja exister. Connectez-vous avec cet email, ou utilisez Google si vous aviez cree le compte avec Google.");
+      }
+      throw new Error("Compte cree. Confirmez votre email depuis le telephone, puis revenez dans SamaStock.");
     }
     const verifiedUser = await getVerifiedCurrentUser();
-    if (verifiedUser.email?.toLowerCase() !== email.toLowerCase().trim()) {
+    if (verifiedUser.email?.toLowerCase() !== normalizedEmail) {
       await clearStoredSupabaseSession();
       throw new Error("La session creee ne correspond pas a ce compte. Reconnectez-vous.");
     }

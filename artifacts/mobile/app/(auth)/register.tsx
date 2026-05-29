@@ -41,6 +41,7 @@ export default function RegisterScreen() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [confirmationEmail, setConfirmationEmail] = useState("");
   const submittingRef = useRef(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -116,11 +117,53 @@ export default function RegisterScreen() {
       }
       router.replace("/(tabs)");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur d'inscription");
+      const message = e instanceof Error ? e.message : "Erreur d'inscription";
+      if (message.toLowerCase().includes("confirmez votre email")) {
+        setConfirmationEmail(email.trim().toLowerCase());
+        setPassword("");
+        setError("");
+      } else {
+        setError(message);
+      }
     } finally {
       submittingRef.current = false;
       setLoading(false);
     }
+  }
+
+  function goToLoginAfterConfirmation() {
+    router.replace({
+      pathname: "/(auth)/login",
+      params: { email: confirmationEmail },
+    });
+  }
+
+  if (confirmationEmail) {
+    return (
+      <View style={[styles.root, styles.confirmRoot, { backgroundColor: colors.background, paddingTop: topPad + 24, paddingBottom: bottomPad + 24 }]}>
+        <View style={[styles.iconBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Feather name="mail" size={30} color={colors.primary} />
+        </View>
+        <Text style={[styles.title, { color: colors.text }]}>Confirmez votre email</Text>
+        <Text style={[styles.confirmText, { color: colors.mutedForeground }]}>
+          Nous avons envoye un lien a {confirmationEmail}. Ouvrez-le sur ce telephone pour activer le compte et revenir dans SamaStock.
+        </Text>
+        <TouchableOpacity
+          style={[styles.btn, { backgroundColor: colors.primary }]}
+          onPress={goToLoginAfterConfirmation}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.btnText}>Continuer vers connexion</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.secondaryAction, { borderColor: colors.border }]}
+          onPress={() => setConfirmationEmail("")}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.secondaryActionText, { color: colors.primary }]}>Modifier l'email</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   return (
@@ -219,6 +262,7 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  confirmRoot: { justifyContent: "center", paddingHorizontal: 24, gap: 18 },
   topBar: { paddingHorizontal: 20, paddingBottom: 8 },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   form: { paddingHorizontal: 24, paddingTop: 16, gap: 16 },
@@ -238,6 +282,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: "700", fontFamily: "Inter_700Bold" },
   subtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginBottom: 4 },
+  confirmText: { fontSize: 15, lineHeight: 22, fontFamily: "Inter_400Regular" },
   errorBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -280,4 +325,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   googleBtnText: { fontSize: 15, fontWeight: "700", fontFamily: "Inter_700Bold" },
+  secondaryAction: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryActionText: { fontSize: 15, fontWeight: "700", fontFamily: "Inter_700Bold" },
 });
